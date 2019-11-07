@@ -1,17 +1,28 @@
 package cmds
 
 import (
-	"github.com/jinzhu/gorm"
+	"fmt"
+	"github.com/pubgo/g/logs"
 	"github.com/pubgo/g/xcmds"
-	"github.com/pubgo/g/xcmds/migrate"
+	"github.com/pubgo/gitsync/config"
+	"github.com/pubgo/gitsync/version"
 	"github.com/spf13/cobra"
 )
 
+const Service = "gitsync"
+
 // Execute exec
 var Execute = xcmds.Init(func(cmd *cobra.Command) {
-	cmd.Use = "gitsync"
+	cmd.Use = Service
+	cmd.Version = version.Version
+}, func() {
+	_l := logs.Default()
+	_l.Version = version.Version
+	_l.Service = Service
+	_l.Init()
 
-	migrate.InitCommand(func(opt *migrate.Options) {
-		opt.Db = &gorm.DB{}
-	})
+	//xcmds.InitLog()
+
+	cfg := config.Default()
+	fmt.Println(cfg.Ext)
 })
