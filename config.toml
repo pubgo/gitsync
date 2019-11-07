@@ -1,17 +1,21 @@
-app_name="gitsync"
-
 [log]
 enabled=true
 log_level="debug"
 output_type="console" # console|file
+filename="logs.log" # console|file
 
 [ext]
 [ext.sync]
 [[ext.sync.cfg]]
-name="beepkg"
-desc="项目描述"
-from_repo=""
-to_rep=""
+name="mworker"
+desc="mworker 项目迁移"
 time_interval="60d"
+
+from_repo=""
+from_branch="master"
+
+to_rep=""
+to_branch="master"
+
 
 
