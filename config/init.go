@@ -3,12 +3,15 @@ package config
 // ext app
 type ext struct {
 	Sync struct {
-		Cfg []struct {
-			Name         string `toml:"name"`
-			Desc         string `toml:"desc"`
+		RepoDir string `toml:"repo_dir"`
+		Cfg     []struct {
+			TimeInterval int    `toml:"time_interval"`
+			RepoName     string `toml:"repo_name"`
 			FromRepo     string `toml:"from_repo"`
-			ToRep        string `toml:"to_rep"`
-			TimeInterval string `toml:"time_interval"`
+			FromBranch   string `toml:"from_branch"`
+			ToRepo       string `toml:"to_repo"`
+			ToBranch     string `toml:"to_branch"`
 		} `toml:"cfg"`
 	} `toml:"sync"`
 }
+

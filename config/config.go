@@ -8,19 +8,23 @@ import (
 )
 
 // Config app
-type Config struct {
+type _Config struct {
 	Cfg *config.Config
 	Ext ext `toml:"ext"`
 }
 
-var _cfg *Config
+var _cfg *_Config
 var _once sync.Once
 
 // Default global config instance
-func Default() *Config {
+func Default() *_Config {
 	_once.Do(func() {
-		_cfg = &Config{Cfg: xconfig_instance.Default()}
+		_cfg = &_Config{Cfg: xconfig_instance.Default()}
 		xerror.Panic(xconfig_instance.ExtDecode(&_cfg.Ext))
 	})
 	return _cfg
+}
+
+func Init() {
+	Default()
 }

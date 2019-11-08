@@ -6,15 +6,16 @@ filename="logs.log" # console|file
 
 [ext]
 [ext.sync]
+repo_dir="repos"
 [[ext.sync.cfg]]
-name="mworker"
-desc="mworker 项目迁移"
-time_interval="60d"
+time_interval=60
+
+repo_name=""
 
 from_repo=""
 from_branch="master"
 
-to_rep=""
+to_repo=""
 to_branch="master"
 
 

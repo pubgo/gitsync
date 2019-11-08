@@ -1,7 +1,6 @@
 package cmds
 
 import (
-	"fmt"
 	"github.com/pubgo/g/logs"
 	"github.com/pubgo/g/xcmds"
 	"github.com/pubgo/g/xerror"
@@ -26,8 +25,7 @@ var Execute = xcmds.Init(func(cmd *cobra.Command) {
 
 	//xcmds.InitLog()
 
-	cfg := config.Default()
-	fmt.Println(cfg.Ext)
+	config.Init()
 
 	return
 })

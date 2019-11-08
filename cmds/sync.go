@@ -1,11 +1,17 @@
 package cmds
 
 import (
+	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xcmds"
+	"github.com/pubgo/g/xconfig/xconfig_instance"
 	"github.com/pubgo/g/xerror"
-	"github.com/rs/zerolog/log"
+	"github.com/pubgo/gitsync/config"
 	"github.com/spf13/cobra"
+	"path/filepath"
+	"time"
 )
+
+const repos = "repos"
 
 func init() {
 	xcmds.AddCommand(&cobra.Command{
@@ -15,8 +21,44 @@ func init() {
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			defer xerror.RespErr(&err)
 
-			log.Error().Msg("error")
-			return
+			// 检查拉取代码的目录是否存在, 不存在创建
+			_repoDir := filepath.Join(xconfig_instance.HomeDir(), repos)
+			xerror.PanicM(fileutil.IsNotExistMkDir(_repoDir), "%s目录创建失败", _repoDir)
+
+			var _repos []*repo
+			_cfg := config.Default().Ext.Sync
+			for _, cfg := range _cfg.Cfg {
+				if cfg.TimeInterval <= 0 {
+					cfg.TimeInterval = 30
+				}
+
+				if cfg.FromBranch == "" {
+					cfg.FromBranch = "master"
+				}
+
+				if cfg.ToBranch == "" {
+					cfg.ToBranch = "master"
+				}
+
+				xerror.PanicT(cfg.RepoName == "", "git repo name is empty")
+				xerror.PanicT(cfg.FromRepo == "" || cfg.ToRepo == "", "git repo error(from:%s, to:%s)", cfg.FromRepo, cfg.ToRepo)
+
+				var _repo repo
+				_repo.RepoDir = _repoDir
+				_repo.TimeInterval = cfg.TimeInterval
+				_repo.FromRepo = cfg.FromRepo
+				_repo.FromBranch = cfg.FromBranch
+				_repo.ToRepo = cfg.ToRepo
+				_repo.ToBranch = cfg.ToBranch
+				_repos = append(_repos, &_repo)
+			}
+
+			for {
+				for _, repo := range _repos {
+					go repo.run()
+				}
+				time.Sleep(time.Minute)
+			}
 		},
 	})
 }
