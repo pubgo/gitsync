@@ -23,7 +23,7 @@ var Execute = xcmds.Init(func(cmd *cobra.Command) {
 	_l.Service = Service
 	_l.Init()
 
-	//xcmds.InitLog()
+	xcmds.InitLog()
 
 	config.Init()
 

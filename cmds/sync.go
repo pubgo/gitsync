@@ -40,7 +40,6 @@ func init() {
 					cfg.ToBranch = "master"
 				}
 
-				xerror.PanicT(cfg.RepoName == "", "git repo name is empty")
 				xerror.PanicT(cfg.FromRepo == "" || cfg.ToRepo == "", "git repo error(from:%s, to:%s)", cfg.FromRepo, cfg.ToRepo)
 				xerror.PanicT(len(cfg.FromUserPass) != 3 && len(cfg.ToUserPass) != 3, "git repo username, password and email is not set")
 
