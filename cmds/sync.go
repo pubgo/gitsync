@@ -42,14 +42,19 @@ func init() {
 
 				xerror.PanicT(cfg.RepoName == "", "git repo name is empty")
 				xerror.PanicT(cfg.FromRepo == "" || cfg.ToRepo == "", "git repo error(from:%s, to:%s)", cfg.FromRepo, cfg.ToRepo)
+				xerror.PanicT(len(cfg.FromUserPass) != 3 && len(cfg.ToUserPass) != 3, "git repo username, password and email is not set")
 
 				var _repo repo
 				_repo.RepoDir = _repoDir
 				_repo.TimeInterval = cfg.TimeInterval
+
 				_repo.FromRepo = cfg.FromRepo
 				_repo.FromBranch = cfg.FromBranch
+				_repo.FromUserPass = cfg.FromUserPass
+
 				_repo.ToRepo = cfg.ToRepo
 				_repo.ToBranch = cfg.ToBranch
+				_repo.ToUserPass = cfg.ToUserPass
 				_repos = append(_repos, &_repo)
 			}
 

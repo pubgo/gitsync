@@ -10,13 +10,10 @@ repo_dir="repos"
 [[ext.sync.cfg]]
 time_interval=60
 
-repo_name=""
-
+from_user_pass=["username","password","email"]
 from_repo=""
 from_branch="master"
 
+to_user_pass=["username","password","email"]
 to_repo=""
 to_branch="master"
-
-
-

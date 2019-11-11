@@ -17,37 +17,33 @@ import (
 	"time"
 )
 
-//1. 启动的时候，检查，代码是否拉取，没有的那么，开始拉取代码，拉取之后的，并设置另一个remote origin 标记O1， 然后更新代码到最新
-//2. 获取两个月之前的改天的所有的需要提交的commit，并获取id，时间和msg
-//3. 获取距离两个月之前而当time最近的那一次commit的信息 标记为C1
-//4. git reset--hard C1.id
-//5. git reset--soft C1.id 的上一个CID
-//6. git commit -m "C1.msg"
-//6. git push O1 O1/branch
-
 type repo struct {
 	RepoDir      string
-	TimeInterval int
-	RepoName     string
+	TimeInterval int `toml:"time_interval"`
 
-	FromRepo   string
-	FromBranch string
-	ToRepo     string
-	ToBranch   string
+	FromUserPass []string `toml:"from_user_pass"`
+	FromRepo     string   `toml:"from_repo"`
+	FromBranch   string   `toml:"from_branch"`
 
-	commits []*object.Commit
-	CurDate string
+	ToUserPass []string `toml:"to_user_pass"`
+	ToRepo     string   `toml:"to_repo"`
+	ToBranch   string   `toml:"to_branch"`
+
+	commits    []*object.Commit
+	curDate    string
+	lastCommit *object.Commit
 
 	mutex *sync.RWMutex
 }
 
-func (t *repo) getRepoDomain() string {
-	_url := xerror.PanicErr(url.Parse(t.ToRepo)).(*url.URL)
-	return _url.Hostname()
+// 根据git地址获取域名, 用来当做remote origin 名字
+func (t *repo) getRepoDomain(repo string) string {
+	return xerror.PanicErr(url.Parse(repo)).(*url.URL).Hostname()
 }
 
-func (t *repo) getRepoName() string {
-	_us := strings.Split(t.ToRepo, "/")
+// 根据git地址获取git repo名字
+func (t *repo) getRepoName(repo string) string {
+	_us := strings.Split(repo, "/")
 	_name := _us[len(_us)-1]
 	if strings.HasSuffix(_name, ".git") {
 		return _name[:len(_name)-4]
@@ -55,14 +51,14 @@ func (t *repo) getRepoName() string {
 	return _name
 }
 
-// 添加 remote
+// 添加 git remote origin
 func (t *repo) remoteAdd() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.RepoName)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 
-	_name := t.getRepoDomain()
+	_name := t.getRepoDomain(t.FromRepo)
 	xerror.PanicErr(r.CreateRemote(&config.RemoteConfig{
 		Name: _name,
 		URLs: []string{t.ToRepo},
@@ -82,14 +78,17 @@ func (t *repo) remoteAdd() (err error) {
 }
 
 // 检查日期是否改变
+// 重启或者时间增加一天，时期都会改变
 func (t *repo) isDateChanged() bool {
-	if t.CurDate == "" {
+	if t.curDate == "" {
 		return true
 	}
 
+	// 获取指定天数之前的那天的日期
 	_curDate := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24).Format("2006-01-02")
-	if _curDate != t.CurDate {
-		t.CurDate = _curDate
+	if _curDate != t.curDate {
+		t.curDate = _curDate
+		t.lastCommit = nil
 		return true
 	}
 
@@ -100,14 +99,15 @@ func (t *repo) isDateChanged() bool {
 func (t *repo) pull() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.RepoName)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
 	xerror.PanicM(w.Pull(&git.PullOptions{
 		Auth: &http.BasicAuth{
-			Username: "",
-			Password: "",
+			Username: t.FromUserPass[0],
+			Password: t.FromUserPass[1],
 		},
+		Force:         true,
 		SingleBranch:  true,
 		RemoteName:    "origin",
 		ReferenceName: plumbing.ReferenceName(t.FromBranch),
@@ -121,15 +121,15 @@ func (t *repo) pull() (err error) {
 func (t *repo) clone() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.RepoName)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	if !fileutil.CheckNotExist(_repoDir) {
 		return
 	}
 
 	xerror.PanicErr(git.PlainClone(_repoDir, false, &git.CloneOptions{
 		Auth: &http.BasicAuth{
-			Username: "",
-			Password: "",
+			Username: t.FromUserPass[0],
+			Password: t.FromUserPass[1],
 		},
 		URL:           t.FromRepo,
 		SingleBranch:  true,
@@ -138,6 +138,9 @@ func (t *repo) clone() (err error) {
 		Progress:      os.Stdout,
 	}))
 
+	// 添加远程url失败
+	xerror.PanicM(t.remoteAdd(), "git remote origin add failed")
+
 	return
 }
 
@@ -145,7 +148,9 @@ func (t *repo) clone() (err error) {
 func (t *repo) handleCommit() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.RepoName)
+	xerror.PanicM(t.pull(), "handle git pull failed")
+
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 
 	cIter := xerror.PanicErr(r.Log(&git.LogOptions{
@@ -154,12 +159,18 @@ func (t *repo) handleCommit() (err error) {
 	defer cIter.Close()
 
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		fmt.Println(c)
+		if c.Committer.When.Format("2006-01-02") == t.curDate {
+			t.commits = append(t.commits, c)
+		}
 
-		c.Committer.When.Format("2006-01-02")
-
+		// 获取指定当天commit之前的一个commit
+		if c.Committer.When.After(xerror.PanicErr(time.Parse("2006-01-02", t.curDate)).(time.Time)) {
+			if t.lastCommit == nil {
+				t.lastCommit = c
+			}
+		}
 		return nil
-	}), "commit iter error")
+	}), "git commit iter failed")
 
 	return
 }
@@ -167,28 +178,64 @@ func (t *repo) handleCommit() (err error) {
 func (t *repo) commitAndPush() (err error) {
 	defer xerror.RespErr(&err)
 
+	var _commit *object.Commit = nil
+	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	for _, c := range t.commits {
+		// 距离commit在两分钟之内，就提交了
+		if c.Committer.When.Sub(_now) < 2*time.Minute {
+			_commit = c
+		}
 	}
 
-	//w.Reset(&git.ResetOptions{
-	//	Commit: "",
-	//	Mode:   "",
-	//})
+	if _commit == nil {
+		return
+	}
 
-	_repoDir := filepath.Join(t.RepoDir, t.RepoName)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	xerror.PanicErr(w.Commit("example go-git commit", &git.CommitOptions{
+
+	xerror.PanicM(t.pull(), "git pull failed")
+
+	xerror.PanicM(w.Reset(&git.ResetOptions{
+		Commit: _commit.Hash,
+		Mode:   git.HardReset,
+	}), "git reset failed")
+
+	xerror.PanicM(w.Reset(&git.ResetOptions{
+		Commit: t.lastCommit.Hash,
+		Mode:   git.SoftReset,
+	}), "git reset failed")
+
+	// 提交commit
+	xerror.PanicErr(w.Commit(_commit.Message, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
-			Name:  "John Doe",
-			Email: "john@doe.org",
+			Name:  t.ToUserPass[0],
+			Email: t.ToUserPass[2],
 			When:  time.Now(),
 		},
 	}))
 
-	xerror.Panic(r.Push(&git.PushOptions{}))
+	xerror.Panic(r.Push(&git.PushOptions{
+		RemoteName: t.getRepoDomain(t.ToRepo),
+		Auth: &http.BasicAuth{
+			Username: t.FromUserPass[0],
+			Password: t.FromUserPass[1],
+		},
+		Progress: os.Stdout,
+		RefSpecs: []config.RefSpec{config.RefSpec(fmt.Sprintf("%s/%s", t.getRepoDomain(t.ToRepo), t.ToBranch))},
+	}))
+
+	// 把提交的commit删除，不然需要合并新提交的commit
+	xerror.PanicM(w.Reset(&git.ResetOptions{
+		Commit: t.lastCommit.Hash,
+		Mode:   git.HardReset,
+	}), "git last commit reset failed")
+
+	// 最后把lastCommit提前一位
+	t.lastCommit = _commit
 
 	return
 }
@@ -198,9 +245,8 @@ func (t *repo) run() {
 
 	xerror.Panic(t.clone())
 
-	// 时间改变
+	// 时间更加一天，自动的更新信息
 	if t.isDateChanged() {
-		xerror.Panic(t.pull())
 		xerror.Panic(t.handleCommit())
 	}
 
