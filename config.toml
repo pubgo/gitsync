@@ -7,7 +7,13 @@ filename="logs.log" # console|file
 [ext]
 [ext.sync]
 repo_dir="repos"
+from_branch="master"
+to_branch="master"
+time_interval=11
+from_user_pass=["baiyunhui","123456","baiyunhui@yuanben.org"]
+to_user_pass=["kooksee","123456","kooksee@163.com"]
 [[ext.sync.cfg]]
+# 11 天, 默认7天
 time_interval=11
 
 from_user_pass=["baiyunhui","123456","baiyunhui@yuanben.org"]

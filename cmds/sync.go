@@ -20,24 +20,45 @@ func init() {
 		Short:   "sync startup",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			defer xerror.RespErr(&err)
+			_cfg := config.Default().Ext.Sync
+
+			if _cfg.RepoDir == "" {
+				_cfg.RepoDir = repos
+			}
 
 			// 检查拉取代码的目录是否存在, 不存在创建
-			_repoDir := filepath.Join(xconfig_instance.HomeDir(), repos)
+			_repoDir := filepath.Join(xconfig_instance.HomeDir(), _cfg.RepoDir)
 			xerror.PanicM(fileutil.IsNotExistMkDir(_repoDir), "%s目录创建失败", _repoDir)
 
 			var _repos []*repo
-			_cfg := config.Default().Ext.Sync
 			for _, cfg := range _cfg.Cfg {
 				if cfg.TimeInterval <= 0 {
 					cfg.TimeInterval = 7
+					if _cfg.TimeInterval > 0 {
+						cfg.TimeInterval = _cfg.TimeInterval
+					}
 				}
 
 				if cfg.FromBranch == "" {
 					cfg.FromBranch = "master"
+					if _cfg.FromBranch != "" {
+						cfg.FromBranch = _cfg.FromBranch
+					}
 				}
 
 				if cfg.ToBranch == "" {
 					cfg.ToBranch = "master"
+					if _cfg.ToBranch != "" {
+						cfg.ToBranch = _cfg.ToBranch
+					}
+				}
+
+				if len(_cfg.FromUserPass) != 0 {
+					cfg.FromUserPass = _cfg.FromUserPass
+				}
+
+				if len(_cfg.ToUserPass) != 0 {
+					cfg.ToUserPass = _cfg.ToUserPass
 				}
 
 				xerror.PanicT(cfg.FromRepo == "" || cfg.ToRepo == "", "git repo error(from:%s, to:%s)", cfg.FromRepo, cfg.ToRepo)
