@@ -29,7 +29,7 @@ func init() {
 			_cfg := config.Default().Ext.Sync
 			for _, cfg := range _cfg.Cfg {
 				if cfg.TimeInterval <= 0 {
-					cfg.TimeInterval = 30
+					cfg.TimeInterval = 7
 				}
 
 				if cfg.FromBranch == "" {

@@ -1,7 +1,6 @@
 package cmds
 
 import (
-	"fmt"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
 	"gopkg.in/src-d/go-git.v4"
@@ -12,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -58,12 +58,13 @@ func (t *repo) remoteAdd() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 
-	_name := t.getRepoDomain(t.FromRepo)
+	_name := t.getRepoDomain(t.ToRepo)
 	xerror.PanicErr(r.CreateRemote(&config.RemoteConfig{
 		Name: _name,
 		URLs: []string{t.ToRepo},
 	}))
 
+	// 检查是否添加成功
 	_ok := false
 	for _, r := range xerror.PanicErr(r.Remotes()).([]*git.Remote) {
 		if r.Config().Name == _name {
@@ -80,15 +81,12 @@ func (t *repo) remoteAdd() (err error) {
 // 检查日期是否改变
 // 重启或者时间增加一天，时期都会改变
 func (t *repo) isDateChanged() bool {
-	if t.curDate == "" {
-		return true
-	}
-
 	// 获取指定天数之前的那天的日期
 	_curDate := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24).Format("2006-01-02")
 	if _curDate != t.curDate {
+		// 日期改变初始化
 		t.curDate = _curDate
-		t.lastCommit = nil
+		t.commits = t.commits[:0]
 		return true
 	}
 
@@ -102,7 +100,7 @@ func (t *repo) pull() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	xerror.PanicM(w.Pull(&git.PullOptions{
+	if err := w.Pull(&git.PullOptions{
 		Auth: &http.BasicAuth{
 			Username: t.FromUserPass[0],
 			Password: t.FromUserPass[1],
@@ -110,9 +108,11 @@ func (t *repo) pull() (err error) {
 		Force:         true,
 		SingleBranch:  true,
 		RemoteName:    "origin",
-		ReferenceName: plumbing.ReferenceName(t.FromBranch),
+		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 		Progress:      os.Stdout,
-	}), "git pull failed")
+	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
+		xerror.PanicM(err, "git pull failed")
+	}
 
 	return
 }
@@ -134,7 +134,7 @@ func (t *repo) clone() (err error) {
 		URL:           t.FromRepo,
 		SingleBranch:  true,
 		RemoteName:    "origin",
-		ReferenceName: plumbing.ReferenceName(t.FromBranch),
+		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 		Progress:      os.Stdout,
 	}))
 
@@ -153,9 +153,7 @@ func (t *repo) handleCommit() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 
-	cIter := xerror.PanicErr(r.Log(&git.LogOptions{
-		Order: git.LogOrderCommitterTime,
-	})).(object.CommitIter)
+	cIter := xerror.PanicErr(r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
 	defer cIter.Close()
 
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
@@ -164,13 +162,19 @@ func (t *repo) handleCommit() (err error) {
 		}
 
 		// 获取指定当天commit之前的一个commit
-		if c.Committer.When.After(xerror.PanicErr(time.Parse("2006-01-02", t.curDate)).(time.Time)) {
+		if c.Committer.When.Before(xerror.PanicErr(time.Parse("2006-01-02", t.curDate)).(time.Time)) {
 			if t.lastCommit == nil {
 				t.lastCommit = c
+				return xerror.ErrDone
 			}
 		}
 		return nil
 	}), "git commit iter failed")
+
+	// 按照时间从小到大 commit 排序
+	sort.Slice(t.commits, func(i, j int) bool {
+		return t.commits[i].Committer.When.Before(t.commits[j].Committer.When)
+	})
 
 	return
 }
@@ -178,28 +182,30 @@ func (t *repo) handleCommit() (err error) {
 func (t *repo) commitAndPush() (err error) {
 	defer xerror.RespErr(&err)
 
-	var _commit *object.Commit = nil
+	var _curCommit *object.Commit = nil
 	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	for _, c := range t.commits {
+		//fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
 		if c.Committer.When.Sub(_now) < 2*time.Minute {
-			_commit = c
+			_curCommit = c
+			break
 		}
 	}
 
-	if _commit == nil {
+	// 定时检查更新
+	if _curCommit == nil || _curCommit == t.lastCommit {
+		//fmt.Println("2006-01-02", "没有更新")
 		return
 	}
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
-
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-
 	xerror.PanicM(t.pull(), "git pull failed")
 
 	xerror.PanicM(w.Reset(&git.ResetOptions{
-		Commit: _commit.Hash,
+		Commit: _curCommit.Hash,
 		Mode:   git.HardReset,
 	}), "git reset failed")
 
@@ -209,7 +215,7 @@ func (t *repo) commitAndPush() (err error) {
 	}), "git reset failed")
 
 	// 提交commit
-	xerror.PanicErr(w.Commit(_commit.Message, &git.CommitOptions{
+	xerror.PanicErr(w.Commit(_curCommit.Message, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
 			Name:  t.ToUserPass[0],
@@ -218,15 +224,16 @@ func (t *repo) commitAndPush() (err error) {
 		},
 	}))
 
-	xerror.Panic(r.Push(&git.PushOptions{
+	if err := r.Push(&git.PushOptions{
 		RemoteName: t.getRepoDomain(t.ToRepo),
 		Auth: &http.BasicAuth{
-			Username: t.FromUserPass[0],
-			Password: t.FromUserPass[1],
+			Username: t.ToUserPass[0],
+			Password: t.ToUserPass[1],
 		},
 		Progress: os.Stdout,
-		RefSpecs: []config.RefSpec{config.RefSpec(fmt.Sprintf("%s/%s", t.getRepoDomain(t.ToRepo), t.ToBranch))},
-	}))
+	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
+		xerror.Panic(err)
+	}
 
 	// 把提交的commit删除，不然需要合并新提交的commit
 	xerror.PanicM(w.Reset(&git.ResetOptions{
@@ -235,8 +242,7 @@ func (t *repo) commitAndPush() (err error) {
 	}), "git last commit reset failed")
 
 	// 最后把lastCommit提前一位
-	t.lastCommit = _commit
-
+	t.lastCommit = _curCommit
 	return
 }
 

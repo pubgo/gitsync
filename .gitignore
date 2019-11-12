@@ -25,3 +25,4 @@ kdata
 *.log
 g
 migrations/m_*.go
+repos/*

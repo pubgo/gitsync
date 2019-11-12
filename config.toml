@@ -8,12 +8,12 @@ filename="logs.log" # console|file
 [ext.sync]
 repo_dir="repos"
 [[ext.sync.cfg]]
-time_interval=60
+time_interval=11
 
-from_user_pass=["username","password","email"]
-from_repo=""
+from_user_pass=["baiyunhui","123456","baiyunhui@yuanben.org"]
+from_repo="https://git.dev.yuanben.org/scm/trn/datastore_frontend.git"
 from_branch="master"
 
-to_user_pass=["username","password","email"]
-to_repo=""
+to_user_pass=["kooksee","123456","kooksee@163.com"]
+to_repo="https://github.com/kooksee/datastore_frontend.git"
 to_branch="master"
