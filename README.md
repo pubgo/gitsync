@@ -13,4 +13,18 @@
 6. git commit -m "C1.msg"
 6. git push O1 O1/branch
 
+## 启动
+
+### 拉取依赖
+`go mod vendor`
+
+### 编译
+`make b`
+
+### 加密自己的密码
+`./main ss --enc -k 秘钥 -t git仓库密码`
+
+### 把加密后的密码配置到环境变量中
+### 运行
+`./main sync`
 

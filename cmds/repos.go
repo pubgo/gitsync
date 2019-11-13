@@ -264,5 +264,5 @@ func (t *repo) run() {
 	}
 
 	xerror.Panic(t.commitAndPush())
-	log.Info().Msg("handle over")
+	log.Info().Msgf("%s over", t.getRepoName(t.FromRepo))
 }
