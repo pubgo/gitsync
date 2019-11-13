@@ -171,18 +171,19 @@ func (t *repo) handleCommit() (err error) {
 	cIter := xerror.PanicErr(r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
 	defer cIter.Close()
 
+	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		if c.Committer.When.Format("2006-01-02") == t.curDate {
+		//fmt.Println(c.Committer.When.String())
+		if c.Committer.When.Format("2006-01-02") == t.curDate && c.Committer.When.After(_now) {
 			t.commits = append(t.commits, c)
 		}
 
 		// 获取指定当天commit之前的一个commit
-		if c.Committer.When.Before(xerror.PanicErr(time.Parse("2006-01-02", t.curDate)).(time.Time)) {
-			if t.lastCommit == nil {
-				t.lastCommit = c
-				return xerror.ErrDone
-			}
+		if c.Committer.When.Before(_now) {
+			t.lastCommit = c
+			return xerror.ErrDone
 		}
+
 		return nil
 	}), "git commit iter failed")
 
@@ -191,8 +192,8 @@ func (t *repo) handleCommit() (err error) {
 		return t.commits[i].Committer.When.Before(t.commits[j].Committer.When)
 	})
 
-	for _, c := range t.commits {
-		fmt.Println(c.Committer.When.String(), c.Hash.String(), t.curDate)
+	for i, c := range t.commits {
+		fmt.Println(i, c.Committer.When.String(), c.Hash.String(), _now.String())
 	}
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
@@ -207,8 +208,8 @@ func (t *repo) commitAndPush() (err error) {
 	for _, c := range t.commits {
 		fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
-		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 80*time.Minute.Seconds() {
-			fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 5*time.Minute.Seconds() {
+			//fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
 			_curCommit = c
 			break
 		}
@@ -274,7 +275,6 @@ func (t *repo) commitAndPush() (err error) {
 		Progress: os.Stdout,
 		RefSpecs: []config.RefSpec{"+" + config.DefaultPushRefSpec},
 	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
-		fmt.Println(err.Error())
 		if err == git.ErrRemoteNotFound {
 			xerror.Panic(t.remoteAdd())
 		}
