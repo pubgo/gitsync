@@ -10,6 +10,7 @@ import (
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -171,7 +172,6 @@ func (t *repo) handleCommit() (err error) {
 	defer cIter.Close()
 
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		//fmt.Println(c.Committer.When.String(), c.Hash.String(), c.Message, t.curDate)
 		if c.Committer.When.Format("2006-01-02") == t.curDate {
 			t.commits = append(t.commits, c)
 		}
@@ -191,6 +191,10 @@ func (t *repo) handleCommit() (err error) {
 		return t.commits[i].Committer.When.Before(t.commits[j].Committer.When)
 	})
 
+	for _, c := range t.commits {
+		fmt.Println(c.Committer.When.String(), c.Hash.String(), t.curDate)
+	}
+
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
 	return
 }
@@ -201,9 +205,10 @@ func (t *repo) commitAndPush() (err error) {
 	var _curCommit *object.Commit = nil
 	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	for _, c := range t.commits {
-		//fmt.Println(c.Committer.When.String())
+		fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
-		if c.Committer.When.Sub(_now) < 15*time.Minute {
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 80*time.Minute.Seconds() {
+			fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
 			_curCommit = c
 			break
 		}
@@ -215,10 +220,12 @@ func (t *repo) commitAndPush() (err error) {
 		return
 	}
 
+	fmt.Println(_curCommit.Message, "sss")
+
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	xerror.PanicM(t.pull(), "git pull failed")
+	//xerror.PanicM(t.pull(), "git pull failed")
 
 	xerror.PanicM(w.Reset(&git.ResetOptions{
 		Commit: _curCommit.Hash,
@@ -230,6 +237,12 @@ func (t *repo) commitAndPush() (err error) {
 		Mode:   git.SoftReset,
 	}), "git reset failed")
 
+	_s := xerror.PanicErr(w.Status()).(git.Status)
+	fmt.Println(_s, "dddd\n\n")
+
+	//xerror.PanicErr(w.Add(filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))))
+
+	fmt.Println(_curCommit.Message)
 	// 提交commit
 	xerror.PanicErr(w.Commit(_curCommit.Message, &git.CommitOptions{
 		All: true,
@@ -246,7 +259,11 @@ func (t *repo) commitAndPush() (err error) {
 			Commit: t.lastCommit.Hash,
 			Mode:   git.HardReset,
 		}), "git last commit reset failed")
+		xerror.Panic(t.pull())
 	}
+
+	_s = xerror.PanicErr(w.Status()).(git.Status)
+	fmt.Println(_s, "111111111\n\n")
 
 	if err := r.Push(&git.PushOptions{
 		RemoteName: t.getRepoDomain(t.ToRepo),
@@ -255,7 +272,9 @@ func (t *repo) commitAndPush() (err error) {
 			Password: t.ToUserPass[1],
 		},
 		Progress: os.Stdout,
+		RefSpecs: []config.RefSpec{"+" + config.DefaultPushRefSpec},
 	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
+		fmt.Println(err.Error())
 		if err == git.ErrRemoteNotFound {
 			xerror.Panic(t.remoteAdd())
 		}

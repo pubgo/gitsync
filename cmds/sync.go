@@ -1,7 +1,6 @@
 package cmds
 
 import (
-	"encoding/base64"
 	"github.com/pubgo/g/pkg/encoding/cryptoutil"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xcmds"
@@ -80,7 +79,7 @@ func init() {
 				if _repo.FromUserPass[1] == "" {
 					_repo.FromUserPass[1] = os.Getenv("from_user_pass")
 				}
-				_repo.FromUserPass[1] = string(cryptoutil.MyXorDecrypt(xerror.PanicErr(base64.StdEncoding.DecodeString(os.ExpandEnv(_repo.FromUserPass[1]))).([]byte), []byte(config.Default().Cfg.AppSecret)))
+				_repo.FromUserPass[1] = string(cryptoutil.MyXorDecrypt(os.ExpandEnv(_repo.FromUserPass[1]), []byte(config.Default().Cfg.AppSecret)))
 
 				_repo.ToRepo = cfg.ToRepo
 				_repo.ToBranch = cfg.ToBranch
@@ -88,7 +87,7 @@ func init() {
 				if _repo.ToUserPass[1] == "" {
 					_repo.ToUserPass[1] = os.Getenv("to_user_pass")
 				}
-				_repo.ToUserPass[1] = string(cryptoutil.MyXorDecrypt(xerror.PanicErr(base64.StdEncoding.DecodeString(os.ExpandEnv(_repo.ToUserPass[1]))).([]byte), []byte(config.Default().Cfg.AppSecret)))
+				_repo.ToUserPass[1] = string(cryptoutil.MyXorDecrypt(os.ExpandEnv(_repo.ToUserPass[1]), []byte(config.Default().Cfg.AppSecret)))
 				_repos = append(_repos, &_repo)
 			}
 

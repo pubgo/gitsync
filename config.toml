@@ -23,6 +23,6 @@ to_user_pass=["kooksee","$to_user_pass","kooksee@163.com"]
 from_repo="https://git.dev.yuanben.org/scm/trn/datastore_frontend.git"
 to_repo="https://github.com/kooksee/datastore_frontend.git"
 
-[[ext.sync.cfg]]
-from_repo="https://git.dev.yuanben.org/scm/~baiyunhui/portal.git"
-to_repo="https://github.com/kooksee/portal.git"
+#[[ext.sync.cfg]]
+#from_repo="https://git.dev.yuanben.org/scm/~baiyunhui/portal.git"
+#to_repo="https://github.com/kooksee/portal.git"
