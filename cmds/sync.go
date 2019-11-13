@@ -60,17 +60,17 @@ func init() {
 				}
 
 				if len(_cfg.FromUserPass) != 0 {
-					cfg.FromUserPass = _cfg.FromUserPass
+					cfg.FromUserPass = append(cfg.FromUserPass, _cfg.FromUserPass...)
 				}
 
 				if len(_cfg.ToUserPass) != 0 {
-					cfg.ToUserPass = _cfg.ToUserPass
+					cfg.ToUserPass = append(cfg.ToUserPass, _cfg.ToUserPass...)
 				}
 
 				xerror.PanicT(cfg.FromRepo == "" || cfg.ToRepo == "", "git repo error(from:%s, to:%s)", cfg.FromRepo, cfg.ToRepo)
 				xerror.PanicT(len(cfg.FromUserPass) != 3 && len(cfg.ToUserPass) != 3, "git repo username, password and email is not set")
 
-				var _repo repo
+				var _repo = newRepo()
 				_repo.RepoDir = _repoDir
 				_repo.TimeInterval = cfg.TimeInterval
 
@@ -94,7 +94,7 @@ func init() {
 
 			for {
 				for _, repo := range _repos {
-					go repo.run()
+					repo.run()
 				}
 				time.Sleep(time.Minute)
 			}

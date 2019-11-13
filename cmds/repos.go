@@ -1,6 +1,7 @@
 package cmds
 
 import (
+	"fmt"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
 	"github.com/rs/zerolog/log"
@@ -18,6 +19,10 @@ import (
 	"time"
 )
 
+func newRepo() repo {
+	return repo{mutex: new(sync.Mutex)}
+}
+
 type repo struct {
 	RepoDir      string
 	TimeInterval int `toml:"time_interval"`
@@ -34,7 +39,7 @@ type repo struct {
 	curDate    string
 	lastCommit *object.Commit
 
-	mutex *sync.RWMutex
+	mutex *sync.Mutex
 }
 
 // 根据git地址获取域名, 用来当做remote origin 名字
@@ -75,7 +80,7 @@ func (t *repo) remoteAdd() (err error) {
 
 	xerror.PanicT(!_ok, "remote(%s,%s)添加失败", _name, t.ToRepo)
 
-	log.Info().Msg("remoteAdd ok")
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("remoteAdd ok")
 	return
 
 }
@@ -112,11 +117,14 @@ func (t *repo) pull() (err error) {
 		RemoteName:    "origin",
 		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 		Progress:      os.Stdout,
-	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
+	}); err != nil &&
+		err != git.NoErrAlreadyUpToDate &&
+		!strings.Contains(err.Error(), "non-fast-forward update") &&
+		!strings.Contains(err.Error(), "worktree contains unstaged") {
 		xerror.PanicM(err, "git pull failed")
 	}
 
-	log.Info().Msg("pull ok")
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("pull ok")
 	return
 }
 
@@ -141,10 +149,12 @@ func (t *repo) clone() (err error) {
 		Progress:      os.Stdout,
 	}))
 
+	xerror.Panic(t.pull())
+
 	// 添加远程url失败
 	xerror.PanicM(t.remoteAdd(), "git remote origin add failed")
 
-	log.Info().Msg("clone ok")
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("clone ok")
 	return
 }
 
@@ -161,6 +171,7 @@ func (t *repo) handleCommit() (err error) {
 	defer cIter.Close()
 
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
+		//fmt.Println(c.Committer.When.String(), c.Hash.String(), c.Message, t.curDate)
 		if c.Committer.When.Format("2006-01-02") == t.curDate {
 			t.commits = append(t.commits, c)
 		}
@@ -180,7 +191,7 @@ func (t *repo) handleCommit() (err error) {
 		return t.commits[i].Committer.When.Before(t.commits[j].Committer.When)
 	})
 
-	log.Info().Msg("handleCommit ok")
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
 	return
 }
 
@@ -192,7 +203,7 @@ func (t *repo) commitAndPush() (err error) {
 	for _, c := range t.commits {
 		//fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
-		if c.Committer.When.Sub(_now) < 2*time.Minute {
+		if c.Committer.When.Sub(_now) < 15*time.Minute {
 			_curCommit = c
 			break
 		}
@@ -229,6 +240,14 @@ func (t *repo) commitAndPush() (err error) {
 		},
 	}))
 
+	_lastCommitReset := func() {
+		// 把提交的commit删除，不然需要合并新提交的commit
+		xerror.PanicM(w.Reset(&git.ResetOptions{
+			Commit: t.lastCommit.Hash,
+			Mode:   git.HardReset,
+		}), "git last commit reset failed")
+	}
+
 	if err := r.Push(&git.PushOptions{
 		RemoteName: t.getRepoDomain(t.ToRepo),
 		Auth: &http.BasicAuth{
@@ -237,24 +256,34 @@ func (t *repo) commitAndPush() (err error) {
 		},
 		Progress: os.Stdout,
 	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
-		xerror.Panic(err)
+		if err == git.ErrRemoteNotFound {
+			xerror.Panic(t.remoteAdd())
+		}
+
+		_lastCommitReset()
+		xerror.PanicM(err, "git 仓库 %s push failed", t.ToRepo)
 	}
 
-	// 把提交的commit删除，不然需要合并新提交的commit
-	xerror.PanicM(w.Reset(&git.ResetOptions{
-		Commit: t.lastCommit.Hash,
-		Mode:   git.HardReset,
-	}), "git last commit reset failed")
+	_lastCommitReset()
 
 	// 最后把lastCommit提前一位
 	t.lastCommit = _curCommit
 
-	log.Info().Msg("commitAndPush ok")
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
 	return
 }
 
 func (t *repo) run() {
-	defer xerror.Debug()
+	defer xerror.Resp(func(err *xerror.Err) {
+		fmt.Println(err.P())
+		os.Exit(-1)
+	})
+
+	defer t.mutex.Unlock()
+
+	t.mutex.Lock()
+
+	log.Info().Msgf("startup %s", t.getRepoName(t.FromRepo))
 
 	xerror.Panic(t.clone())
 
@@ -264,5 +293,6 @@ func (t *repo) run() {
 	}
 
 	xerror.Panic(t.commitAndPush())
-	log.Info().Msgf("%s over", t.getRepoName(t.FromRepo))
+	log.Info().Msgf("over %s", t.getRepoName(t.FromRepo))
+	fmt.Print("\n\n")
 }
