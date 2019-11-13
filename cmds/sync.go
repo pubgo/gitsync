@@ -1,12 +1,15 @@
 package cmds
 
 import (
+	"encoding/base64"
+	"github.com/pubgo/g/pkg/encoding/cryptoutil"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xcmds"
 	"github.com/pubgo/g/xconfig/xconfig_instance"
 	"github.com/pubgo/g/xerror"
 	"github.com/pubgo/gitsync/config"
 	"github.com/spf13/cobra"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -20,6 +23,9 @@ func init() {
 		Short:   "sync startup",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			defer xerror.RespErr(&err)
+
+			config.Default().Cfg.AppSecret = os.ExpandEnv(config.Default().Cfg.AppSecret)
+
 			_cfg := config.Default().Ext.Sync
 
 			if _cfg.RepoDir == "" {
@@ -71,10 +77,18 @@ func init() {
 				_repo.FromRepo = cfg.FromRepo
 				_repo.FromBranch = cfg.FromBranch
 				_repo.FromUserPass = cfg.FromUserPass
+				if _repo.FromUserPass[1] == "" {
+					_repo.FromUserPass[1] = os.Getenv("from_user_pass")
+				}
+				_repo.FromUserPass[1] = string(cryptoutil.MyXorDecrypt(xerror.PanicErr(base64.StdEncoding.DecodeString(os.ExpandEnv(_repo.FromUserPass[1]))).([]byte), []byte(config.Default().Cfg.AppSecret)))
 
 				_repo.ToRepo = cfg.ToRepo
 				_repo.ToBranch = cfg.ToBranch
 				_repo.ToUserPass = cfg.ToUserPass
+				if _repo.ToUserPass[1] == "" {
+					_repo.ToUserPass[1] = os.Getenv("to_user_pass")
+				}
+				_repo.ToUserPass[1] = string(cryptoutil.MyXorDecrypt(xerror.PanicErr(base64.StdEncoding.DecodeString(os.ExpandEnv(_repo.ToUserPass[1]))).([]byte), []byte(config.Default().Cfg.AppSecret)))
 				_repos = append(_repos, &_repo)
 			}
 

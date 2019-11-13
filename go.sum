@@ -242,6 +242,7 @@ github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/9
 github.com/pierrec/lz4 v0.0.0-20190327172049-315a67e90e41/go.mod h1:3/3N9NVKO0jef7pBehbT1qWhCMrIgbYNnFAZCqQ5LRc=
 github.com/pierrec/lz4 v2.0.5+incompatible/go.mod h1:pdkljMzZIN41W+lC3N2tnIh5sFi+IEE17M5jbnwPHcY=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/profile v1.2.1/go.mod h1:hJw3o1OdXxsrSjjVksARp5W95eeEaEfptyVZyv6JUPA=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -293,6 +294,8 @@ github.com/pubgo/g v0.1.21 h1:iKakiFtVhvUgt195k/4aJRMolwDMXg0hytyYH32SBhU=
 github.com/pubgo/g v0.1.21/go.mod h1:xFn17qrQaXCa7mJTSvgiHRDBhQM+GW6FRabM7FRQwA8=
 github.com/pubgo/g v0.1.22 h1:7fZdFIKuLuNjgO2BC4g1skIe/1Hoj5oDBaxeep9yMyw=
 github.com/pubgo/g v0.1.22/go.mod h1:xFn17qrQaXCa7mJTSvgiHRDBhQM+GW6FRabM7FRQwA8=
+github.com/pubgo/g v0.1.23 h1:DFjWpP7CU7ROrVYlB2GTqZjc5p8TbdY4eWiGeAkcGik=
+github.com/pubgo/g v0.1.23/go.mod h1:xFn17qrQaXCa7mJTSvgiHRDBhQM+GW6FRabM7FRQwA8=
 github.com/pubgo/schema v0.0.3/go.mod h1:e8SCXfgwde8aYI64tC+L/NHAutcBgGeHI7Le96EZQ78=
 github.com/quasoft/memstore v0.0.0-20180925164028-84a050167438/go.mod h1:wTPjTepVu7uJBYgZ0SdWHQlIas582j6cn2jgk4DDdlg=
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=

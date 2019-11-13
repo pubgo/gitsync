@@ -1,3 +1,6 @@
+app_name="gitsync"
+app_secret="$app_secret" #用于对敏感数据进行加密
+
 [log]
 enabled=true
 log_level="debug" # error
@@ -6,20 +9,16 @@ filename="logs.log" # console|file
 
 [ext]
 [ext.sync]
-repo_dir="repos"
-from_branch="master"
-to_branch="master"
 # 11 天, 默认7天
 time_interval=11
-from_user_pass=["baiyunhui","123456","baiyunhui@yuanben.org"]
-to_user_pass=["kooksee","123456","kooksee@163.com"]
-[[ext.sync.cfg]]
-time_interval=11
+repo_dir="repos"
 
-from_user_pass=["baiyunhui","123456","baiyunhui@yuanben.org"]
-from_repo="https://git.dev.yuanben.org/scm/trn/datastore_frontend.git"
 from_branch="master"
+from_user_pass=["baiyunhui","$from_user_pass","baiyunhui@yuanben.org"]
 
-to_user_pass=["kooksee","123456","kooksee@163.com"]
-to_repo="https://github.com/kooksee/datastore_frontend.git"
 to_branch="master"
+to_user_pass=["kooksee","$to_user_pass","kooksee@163.com"]
+
+[[ext.sync.cfg]]
+from_repo="https://git.dev.yuanben.org/scm/trn/datastore_frontend.git"
+to_repo="https://github.com/kooksee/datastore_frontend.git"

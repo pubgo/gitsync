@@ -3,6 +3,7 @@ package cmds
 import (
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
+	"github.com/rs/zerolog/log"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -74,6 +75,7 @@ func (t *repo) remoteAdd() (err error) {
 
 	xerror.PanicT(!_ok, "remote(%s,%s)添加失败", _name, t.ToRepo)
 
+	log.Info().Msg("remoteAdd ok")
 	return
 
 }
@@ -114,6 +116,7 @@ func (t *repo) pull() (err error) {
 		xerror.PanicM(err, "git pull failed")
 	}
 
+	log.Info().Msg("pull ok")
 	return
 }
 
@@ -141,6 +144,7 @@ func (t *repo) clone() (err error) {
 	// 添加远程url失败
 	xerror.PanicM(t.remoteAdd(), "git remote origin add failed")
 
+	log.Info().Msg("clone ok")
 	return
 }
 
@@ -176,6 +180,7 @@ func (t *repo) handleCommit() (err error) {
 		return t.commits[i].Committer.When.Before(t.commits[j].Committer.When)
 	})
 
+	log.Info().Msg("handleCommit ok")
 	return
 }
 
@@ -243,6 +248,8 @@ func (t *repo) commitAndPush() (err error) {
 
 	// 最后把lastCommit提前一位
 	t.lastCommit = _curCommit
+
+	log.Info().Msg("commitAndPush ok")
 	return
 }
 
@@ -257,4 +264,5 @@ func (t *repo) run() {
 	}
 
 	xerror.Panic(t.commitAndPush())
+	log.Info().Msg("handle over")
 }
