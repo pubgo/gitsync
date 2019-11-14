@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
+	"github.com/pubgo/g/gotry"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/config"
@@ -129,6 +130,33 @@ func (t *repo) pull() (err error) {
 	return
 }
 
+func (t *repo) pullDstRepo() (err error) {
+	defer xerror.RespErr(&err)
+
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
+	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
+	if err := w.Pull(&git.PullOptions{
+		Auth: &http.BasicAuth{
+			Username: t.ToUserPass[0],
+			Password: t.ToUserPass[1],
+		},
+		Force:         true,
+		SingleBranch:  true,
+		RemoteName:    t.getRepoDomain(t.ToRepo),
+		ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
+		Progress:      os.Stdout,
+	}); err != nil &&
+		err != git.NoErrAlreadyUpToDate &&
+		!strings.Contains(err.Error(), "non-fast-forward update") &&
+		!strings.Contains(err.Error(), "worktree contains unstaged") {
+		xerror.PanicM(err, "git pull failed")
+	}
+
+	log.Info().Str("repo", t.getRepoName(t.ToRepo)).Msg("pull ok")
+	return
+}
+
 // 检查仓库是否存在, 不存在就clone
 func (t *repo) clone() (err error) {
 	defer xerror.RespErr(&err)
@@ -138,17 +166,20 @@ func (t *repo) clone() (err error) {
 		return
 	}
 
-	xerror.PanicErr(git.PlainClone(_repoDir, false, &git.CloneOptions{
-		Auth: &http.BasicAuth{
-			Username: t.FromUserPass[0],
-			Password: t.FromUserPass[1],
-		},
-		URL:           t.FromRepo,
-		SingleBranch:  true,
-		RemoteName:    "origin",
-		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
-		Progress:      os.Stdout,
+	xerror.Panic(gotry.Retry(3, func() {
+		xerror.PanicErr(git.PlainClone(_repoDir, false, &git.CloneOptions{
+			Auth: &http.BasicAuth{
+				Username: t.FromUserPass[0],
+				Password: t.FromUserPass[1],
+			},
+			URL:           t.FromRepo,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
+			Progress:      os.Stdout,
+		}))
 	}))
+
 
 	xerror.Panic(t.pull())
 
@@ -173,8 +204,9 @@ func (t *repo) handleCommit() (err error) {
 
 	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		//fmt.Println(c.Committer.When.String())
-		if c.Committer.When.Format("2006-01-02") == t.curDate && c.Committer.When.After(_now) {
+		fmt.Println(c.Committer.When.String())
+		//&& c.Committer.When.After(_now)
+		if c.Committer.When.Format("2006-01-02") == t.curDate  {
 			t.commits = append(t.commits, c)
 		}
 
@@ -208,7 +240,7 @@ func (t *repo) commitAndPush() (err error) {
 	for _, c := range t.commits {
 		fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
-		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 5*time.Minute.Seconds() {
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 15*time.Minute.Seconds() {
 			//fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
 			_curCommit = c
 			break
@@ -220,8 +252,6 @@ func (t *repo) commitAndPush() (err error) {
 		//fmt.Println("2006-01-02", "没有更新")
 		return
 	}
-
-	fmt.Println(_curCommit.Message, "sss")
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
@@ -238,21 +268,20 @@ func (t *repo) commitAndPush() (err error) {
 		Mode:   git.SoftReset,
 	}), "git reset failed")
 
-	_s := xerror.PanicErr(w.Status()).(git.Status)
-	fmt.Println(_s, "dddd\n\n")
-
 	//xerror.PanicErr(w.Add(filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))))
 
-	fmt.Println(_curCommit.Message)
 	// 提交commit
 	xerror.PanicErr(w.Commit(_curCommit.Message, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
-			Name:  t.ToUserPass[0],
-			Email: t.ToUserPass[2],
+			Name:  _curCommit.Author.Name,
+			Email: _curCommit.Author.Email,
 			When:  time.Now(),
 		},
 	}))
+
+	// 拉取github远程,合并到本地
+	xerror.PanicM(t.pullDstRepo(), "github pull 失败")
 
 	_lastCommitReset := func() {
 		// 把提交的commit删除，不然需要合并新提交的commit
@@ -262,9 +291,6 @@ func (t *repo) commitAndPush() (err error) {
 		}), "git last commit reset failed")
 		xerror.Panic(t.pull())
 	}
-
-	_s = xerror.PanicErr(w.Status()).(git.Status)
-	fmt.Println(_s, "111111111\n\n")
 
 	if err := r.Push(&git.PushOptions{
 		RemoteName: t.getRepoDomain(t.ToRepo),
