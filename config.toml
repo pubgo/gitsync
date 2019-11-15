@@ -10,7 +10,7 @@ filename="logs.log" # console|file
 [ext]
 [ext.sync]
 # 11 天, 默认7天
-time_interval=93
+time_interval=94
 repo_dir="repos"
 
 from_branch="master"

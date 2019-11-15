@@ -2,18 +2,21 @@ package cmds
 
 import (
 	"fmt"
+	"github.com/pubgo/g/gotry"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
-	"github.com/pubgo/g/gotry"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
+	"io/ioutil"
 	"math"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -60,7 +63,8 @@ func (t *repo) getRepoName(repo string) string {
 }
 
 // 添加 git remote origin
-func (t *repo) remoteAdd() (err error) {
+// deprecated
+func (t *repo) _remoteAdd() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
@@ -98,16 +102,15 @@ func (t *repo) isDateChanged() bool {
 		t.commits = t.commits[:0]
 		return true
 	}
-
 	return false
 }
 
 // 检查仓库是否存在，不存在
-func (t *repo) pull() (err error) {
+func (t *repo) pullFrom() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
 	if err := w.Pull(&git.PullOptions{
 		Auth: &http.BasicAuth{
@@ -130,11 +133,11 @@ func (t *repo) pull() (err error) {
 	return
 }
 
-func (t *repo) pullDstRepo() (err error) {
+func (t *repo) pullTo() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.ToRepo))
+	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
 	if err := w.Pull(&git.PullOptions{
 		Auth: &http.BasicAuth{
@@ -143,7 +146,7 @@ func (t *repo) pullDstRepo() (err error) {
 		},
 		Force:         true,
 		SingleBranch:  true,
-		RemoteName:    t.getRepoDomain(t.ToRepo),
+		RemoteName:    "origin",
 		ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
 		Progress:      os.Stdout,
 	}); err != nil &&
@@ -162,12 +165,14 @@ func (t *repo) clone() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	if !fileutil.CheckNotExist(_repoDir) {
-		return
-	}
+	gotry.RetryAt(time.Minute, func(at time.Duration) {
+		repoDirFrom := _repoDir + "_from"
 
-	xerror.Panic(gotry.Retry(3, func() {
-		xerror.PanicErr(git.PlainClone(_repoDir, false, &git.CloneOptions{
+		if !fileutil.CheckNotExist(repoDirFrom) {
+			return
+		}
+
+		xerror.PanicErr(git.PlainClone(repoDirFrom, false, &git.CloneOptions{
 			Auth: &http.BasicAuth{
 				Username: t.FromUserPass[0],
 				Password: t.FromUserPass[1],
@@ -178,13 +183,37 @@ func (t *repo) clone() (err error) {
 			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 			Progress:      os.Stdout,
 		}))
-	}))
+		log.Info().Msgf("clone %s", repoDirFrom)
 
+		xerror.Panic(t.pullFrom())
+	})
 
-	xerror.Panic(t.pull())
+	gotry.RetryAt(time.Minute, func(at time.Duration) {
+		repoDirTo := _repoDir + "_to"
 
-	// 添加远程url失败
-	xerror.PanicM(t.remoteAdd(), "git remote origin add failed")
+		if !fileutil.CheckNotExist(repoDirTo) {
+			return
+		}
+
+		if _, err := git.PlainClone(repoDirTo, false, &git.CloneOptions{
+			Auth: &http.BasicAuth{
+				Username: t.ToUserPass[0],
+				Password: t.ToUserPass[1],
+			},
+			URL:           t.ToRepo,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
+			Progress:      os.Stdout,
+		}); err != nil && err != transport.ErrEmptyRemoteRepository {
+			fmt.Println(err.Error())
+			xerror.Panic(err)
+		}
+
+		log.Info().Msgf("clone %s", repoDirTo)
+
+		xerror.Panic(t.pullTo())
+	})
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("clone ok")
 	return
@@ -194,19 +223,19 @@ func (t *repo) clone() (err error) {
 func (t *repo) handleCommit() (err error) {
 	defer xerror.RespErr(&err)
 
-	xerror.PanicM(t.pull(), "handle git pull failed")
+	xerror.Panic(t.pullFrom())
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	rFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 
-	cIter := xerror.PanicErr(r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
+	cIter := xerror.PanicErr(rFrom.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
 	defer cIter.Close()
 
 	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
 		fmt.Println(c.Committer.When.String())
 		//&& c.Committer.When.After(_now)
-		if c.Committer.When.Format("2006-01-02") == t.curDate  {
+		if c.Committer.When.Format("2006-01-02") == t.curDate {
 			t.commits = append(t.commits, c)
 		}
 
@@ -238,9 +267,12 @@ func (t *repo) commitAndPush() (err error) {
 	var _curCommit *object.Commit = nil
 	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
 	for _, c := range t.commits {
-		fmt.Println(c.Committer.When.String())
+		//fmt.Println(c.Committer.When.String())
 		// 距离commit在两分钟之内，就提交了
-		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 15*time.Minute.Seconds() {
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 5000*time.Minute.Seconds() {
+			if _curCommit == t.lastCommit {
+				continue
+			}
 			//fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
 			_curCommit = c
 			break
@@ -248,30 +280,46 @@ func (t *repo) commitAndPush() (err error) {
 	}
 
 	// 定时检查更新
-	if _curCommit == nil || _curCommit == t.lastCommit {
+	if _curCommit == nil {
 		//fmt.Println("2006-01-02", "没有更新")
 		return
 	}
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
-	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	//xerror.PanicM(t.pull(), "git pull failed")
+	rFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
+	wFrom := xerror.PanicErr(rFrom.Worktree()).(*git.Worktree)
+	xerror.PanicM(t.pullFrom(), "git pull failed")
 
-	xerror.PanicM(w.Reset(&git.ResetOptions{
+	xerror.PanicM(wFrom.Reset(&git.ResetOptions{
 		Commit: _curCommit.Hash,
 		Mode:   git.HardReset,
 	}), "git reset failed")
 
-	xerror.PanicM(w.Reset(&git.ResetOptions{
-		Commit: t.lastCommit.Hash,
-		Mode:   git.SoftReset,
-	}), "git reset failed")
+	fmt.Println(_curCommit.Hash.String())
 
-	//xerror.PanicErr(w.Add(filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))))
+	for _, f := range xerror.PanicErr(ioutil.ReadDir(_repoDir + "_from")).([]os.FileInfo) {
+		if f.Name() == ".git" || f.Name() == ".DS_Store" {
+			continue
+		}
+
+		_cmd := exec.Command("cp", "-Rf", fmt.Sprintf(`%s%s`, _repoDir, "_from/"+f.Name()), _repoDir+"_to/"+f.Name())
+		_dd, err := _cmd.CombinedOutput()
+		xerror.PanicM(err, "copy from repo %s", _dd)
+	}
+
+	time.Sleep(time.Second * 5)
+
+	rTo := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
+	wTo := xerror.PanicErr(rTo.Worktree()).(*git.Worktree)
+	fmt.Println(_repoDir + "_to")
+
+	_status := xerror.PanicErr(wTo.Status()).(git.Status)
+	for k := range _status {
+		xerror.PanicErr(wTo.Add(k))
+	}
 
 	// 提交commit
-	xerror.PanicErr(w.Commit(_curCommit.Message, &git.CommitOptions{
+	xerror.PanicErr(wTo.Commit(_curCommit.Message, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
 			Name:  _curCommit.Author.Name,
@@ -280,20 +328,7 @@ func (t *repo) commitAndPush() (err error) {
 		},
 	}))
 
-	// 拉取github远程,合并到本地
-	xerror.PanicM(t.pullDstRepo(), "github pull 失败")
-
-	_lastCommitReset := func() {
-		// 把提交的commit删除，不然需要合并新提交的commit
-		xerror.PanicM(w.Reset(&git.ResetOptions{
-			Commit: t.lastCommit.Hash,
-			Mode:   git.HardReset,
-		}), "git last commit reset failed")
-		xerror.Panic(t.pull())
-	}
-
-	if err := r.Push(&git.PushOptions{
-		RemoteName: t.getRepoDomain(t.ToRepo),
+	if err := rTo.Push(&git.PushOptions{
 		Auth: &http.BasicAuth{
 			Username: t.ToUserPass[0],
 			Password: t.ToUserPass[1],
@@ -301,15 +336,8 @@ func (t *repo) commitAndPush() (err error) {
 		Progress: os.Stdout,
 		RefSpecs: []config.RefSpec{"+" + config.DefaultPushRefSpec},
 	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
-		if err == git.ErrRemoteNotFound {
-			xerror.Panic(t.remoteAdd())
-		}
-
-		_lastCommitReset()
 		xerror.PanicM(err, "git 仓库 %s push failed", t.ToRepo)
 	}
-
-	_lastCommitReset()
 
 	// 最后把lastCommit提前一位
 	t.lastCommit = _curCommit
@@ -325,7 +353,6 @@ func (t *repo) run() {
 	})
 
 	defer t.mutex.Unlock()
-
 	t.mutex.Lock()
 
 	log.Info().Msgf("startup %s", t.getRepoName(t.FromRepo))
