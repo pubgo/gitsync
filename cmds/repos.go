@@ -344,6 +344,11 @@ func (t *repo) _commitAndPush(c *object.Commit) (err error) {
 	// 提交commit
 	xerror.PanicErr(wTo.Commit(c.Message, &git.CommitOptions{
 		All: true,
+		Committer: &object.Signature{
+			Name:  c.Committer.Name,
+			Email: c.Committer.Email,
+			When:  time.Now(),
+		},
 		Author: &object.Signature{
 			Name:  c.Author.Name,
 			Email: c.Author.Email,
