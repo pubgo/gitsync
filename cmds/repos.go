@@ -237,20 +237,20 @@ func (t *repo) handleCommit() (err error) {
 
 	_now := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24)
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		//fmt.Println(c.Committer.When.String())
-		//&& c.Committer.When.After(_now)
-		if c.Committer.When.Format("2006-01-02") == t.curDate {
-			t.commits = append(t.commits, c)
-		}
-
 		// 获取指定当天commit之前的一个commit
 		if c.Committer.When.Before(_now) {
 			// 如果github仓库就一次commit，那么，就是第一次提交，把所有代码提交了
 			if t.isFirstTime() {
-				xerror.PanicM(t._commitAndPush(c), "git commit error")
+				xerror.PanicM(t._commitAndPush(true, c), "git commit error")
 				log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
-				return xerror.ErrDone
 			}
+			return xerror.ErrDone
+		}
+
+		//fmt.Println(c.Committer.When.String())
+		//&& c.Committer.When.After(_now)
+		if c.Committer.When.Format("2006-01-02") == t.curDate {
+			t.commits = append(t.commits, c)
 		}
 
 		return nil
@@ -309,7 +309,7 @@ func (t *repo) isFirstTime() bool {
 
 // _commitAndPush
 // 把传入的commit 当做最新的commit，然后提交到github
-func (t *repo) _commitAndPush(c *object.Commit) (err error) {
+func (t *repo) _commitAndPush(isFirst bool, c *object.Commit) (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
@@ -341,18 +341,28 @@ func (t *repo) _commitAndPush(c *object.Commit) (err error) {
 		xerror.PanicErr(wTo.Add(k))
 	}
 
+	__t := time.Duration(t.TimeOffset) * time.Hour * 24
+	if __t < 0 {
+		__t = -__t
+	}
+
+	if isFirst {
+		c.Committer.When = time.Now()
+	} else {
+		c.Committer.When = c.Committer.When.Add(__t)
+	}
 	// 提交commit
 	xerror.PanicErr(wTo.Commit(c.Message, &git.CommitOptions{
 		All: true,
 		Committer: &object.Signature{
 			Name:  c.Committer.Name,
 			Email: c.Committer.Email,
-			When:  time.Now(),
+			When:  c.Committer.When,
 		},
 		Author: &object.Signature{
 			Name:  c.Author.Name,
 			Email: c.Author.Email,
-			When:  time.Now(),
+			When:  c.Committer.When,
 		},
 	}))
 
@@ -401,7 +411,7 @@ func (t *repo) commitAndPush() (err error) {
 		return
 	}
 
-	xerror.PanicM(t._commitAndPush(_curCommit), "git commit error")
+	xerror.PanicM(t._commitAndPush(false, _curCommit), "git commit error")
 	return
 }
 
