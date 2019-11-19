@@ -113,22 +113,24 @@ func (t *repo) pullFrom() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	if err := w.Pull(&git.PullOptions{
-		Auth: &http.BasicAuth{
-			Username: t.FromUserPass[0],
-			Password: t.FromUserPass[1],
-		},
-		Force:         true,
-		SingleBranch:  true,
-		RemoteName:    "origin",
-		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
-		Progress:      os.Stdout,
-	}); err != nil &&
-		err != git.NoErrAlreadyUpToDate &&
-		!strings.Contains(err.Error(), "non-fast-forward update") &&
-		!strings.Contains(err.Error(), "worktree contains unstaged") {
-		xerror.PanicM(err, "git pull failed")
-	}
+	gotry.RetryAt(time.Second*10, func(i int) {
+		if err := w.Pull(&git.PullOptions{
+			Auth: &http.BasicAuth{
+				Username: t.FromUserPass[0],
+				Password: t.FromUserPass[1],
+			},
+			Force:         true,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
+			Progress:      os.Stdout,
+		}); err != nil &&
+			err != git.NoErrAlreadyUpToDate &&
+			!strings.Contains(err.Error(), "non-fast-forward update") &&
+			!strings.Contains(err.Error(), "worktree contains unstaged") {
+			xerror.PanicM(err, "git pull failed")
+		}
+	})
 
 	log.Info().Str("repo_from", t.getRepoName(t.FromRepo)).Msg("pull ok")
 	return
@@ -140,22 +142,24 @@ func (t *repo) pullTo() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.ToRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	if err := w.Pull(&git.PullOptions{
-		Auth: &http.BasicAuth{
-			Username: t.ToUserPass[0],
-			Password: t.ToUserPass[1],
-		},
-		Force:         true,
-		SingleBranch:  true,
-		RemoteName:    "origin",
-		ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
-		Progress:      os.Stdout,
-	}); err != nil &&
-		err != git.NoErrAlreadyUpToDate &&
-		!strings.Contains(err.Error(), "non-fast-forward update") &&
-		!strings.Contains(err.Error(), "worktree contains unstaged") {
-		xerror.PanicM(err, "git pull failed")
-	}
+	gotry.RetryAt(time.Second*10, func(i int) {
+		if err := w.Pull(&git.PullOptions{
+			Auth: &http.BasicAuth{
+				Username: t.ToUserPass[0],
+				Password: t.ToUserPass[1],
+			},
+			Force:         true,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
+			Progress:      os.Stdout,
+		}); err != nil &&
+			err != git.NoErrAlreadyUpToDate &&
+			!strings.Contains(err.Error(), "non-fast-forward update") &&
+			!strings.Contains(err.Error(), "worktree contains unstaged") {
+			xerror.PanicM(err, "git pull failed")
+		}
+	})
 
 	log.Info().Str("repo_to", t.getRepoName(t.ToRepo)).Msg("pull ok")
 	return
@@ -235,6 +239,7 @@ func (t *repo) handleCommit() (err error) {
 		//fmt.Println(c.Committer.When.String())
 		//&& c.Committer.When.After(_now)
 		if c.Committer.When.Format("2006-01-02") == t.curDate {
+			fmt.Println("today commit: ", c.Committer.When.String(), c.Hash.String())
 			t.commits = append(t.commits, c)
 		}
 
@@ -254,7 +259,7 @@ func (t *repo) handleCommit() (err error) {
 
 	for i, c := range t.commits {
 		log.Info().
-			Str("now", _now.String()).
+			Str("now", _now.Format(time.RFC3339)).
 			Int("num", i).
 			Str("commit_time", c.Committer.When.String()).
 			Str("hash", c.Hash.String()).

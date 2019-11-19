@@ -6,3 +6,6 @@ enc:
 
 dec:
 	./main ss --dec -k 123456 -t WVdZWFo=
+
+r:
+	./main s
