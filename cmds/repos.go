@@ -113,7 +113,7 @@ func (t *repo) pullFrom() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	gotry.RetryAt(time.Second*10, func(i int) {
+	gotry.RetryAt(time.Second*20, func(i int) {
 		if err := w.Pull(&git.PullOptions{
 			Auth: &http.BasicAuth{
 				Username: t.FromUserPass[0],
@@ -142,7 +142,7 @@ func (t *repo) pullTo() (err error) {
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.ToRepo))
 	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	gotry.RetryAt(time.Second*10, func(i int) {
+	gotry.RetryAt(time.Second*20, func(i int) {
 		if err := w.Pull(&git.PullOptions{
 			Auth: &http.BasicAuth{
 				Username: t.ToUserPass[0],
@@ -157,6 +157,7 @@ func (t *repo) pullTo() (err error) {
 			err != git.NoErrAlreadyUpToDate &&
 			!strings.Contains(err.Error(), "non-fast-forward update") &&
 			!strings.Contains(err.Error(), "worktree contains unstaged") {
+			fmt.Println(err)
 			xerror.PanicM(err, "git pull failed")
 		}
 	})
@@ -248,8 +249,8 @@ func (t *repo) handleCommit() (err error) {
 			if t.isFirstTime() {
 				xerror.PanicM(t._commitAndPush(c), "git commit error")
 				log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
+				return xerror.ErrDone
 			}
-			return xerror.ErrDone
 		}
 
 		return nil
@@ -288,9 +289,9 @@ func (t *repo) getLastCommitFromNewRepo() (err error) {
 	return
 }
 
+// isFirstTime
+//检查是否是第一次把代码提交到github仓库, 如果是, 就立刻同步
 func (t *repo) isFirstTime() bool {
-	xerror.Panic(t.pullTo())
-
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	tFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 
@@ -306,6 +307,8 @@ func (t *repo) isFirstTime() bool {
 	return i == 1
 }
 
+// _commitAndPush
+// 把传入的commit 当做最新的commit，然后提交到github
 func (t *repo) _commitAndPush(c *object.Commit) (err error) {
 	defer xerror.RespErr(&err)
 

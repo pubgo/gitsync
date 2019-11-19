@@ -12,7 +12,7 @@ filename="logs.log" # console|file
 # 11 分钟, 默认2分钟
 time_interval=20
 # 11 天, 默认7天
-time_offset=-98
+time_offset=-99
 repo_dir="repos"
 
 from_branch="master"
