@@ -264,11 +264,11 @@ func (t *repo) handleCommit() (err error) {
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
 
-	xerror.PanicM(t.getDateFromNewRepo(), "get lastCommit error")
+	xerror.PanicM(t.getLastCommitFromNewRepo(), "get lastCommit error")
 	return
 }
 
-func (t *repo) getDateFromNewRepo() (err error) {
+func (t *repo) getLastCommitFromNewRepo() (err error) {
 	defer xerror.RespErr(&err)
 
 	xerror.Panic(t.pullTo())
@@ -364,6 +364,8 @@ func (t *repo) commitAndPush() (err error) {
 	t.lastCommit = _curCommit
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
+
+	xerror.PanicM(t.pullFrom(), "git pull failed")
 	return
 }
 
