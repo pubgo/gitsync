@@ -166,7 +166,7 @@ func (t *repo) clone() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	gotry.RetryAt(time.Minute, func(at time.Duration) {
+	gotry.RetryAt(time.Minute, func(i int) {
 		repoDirFrom := _repoDir + "_from"
 
 		if !fileutil.CheckNotExist(repoDirFrom) {
@@ -188,7 +188,7 @@ func (t *repo) clone() (err error) {
 		xerror.Panic(t.pullFrom())
 	})
 
-	gotry.RetryAt(time.Minute, func(at time.Duration) {
+	gotry.RetryAt(time.Minute, func(i int) {
 		repoDirTo := _repoDir + "_to"
 
 		if !fileutil.CheckNotExist(repoDirTo) {
