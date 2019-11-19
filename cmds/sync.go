@@ -37,8 +37,15 @@ func init() {
 
 			var _repos []*repo
 			for _, cfg := range _cfg.Cfg {
+				if cfg.TimeOffset == 0 {
+					cfg.TimeOffset = 7
+					if _cfg.TimeOffset != 0 {
+						cfg.TimeOffset = _cfg.TimeOffset
+					}
+				}
+
 				if cfg.TimeInterval <= 0 {
-					cfg.TimeInterval = 7
+					cfg.TimeInterval = 2
 					if _cfg.TimeInterval > 0 {
 						cfg.TimeInterval = _cfg.TimeInterval
 					}
@@ -72,6 +79,7 @@ func init() {
 				var _repo = newRepo()
 				_repo.RepoDir = _repoDir
 				_repo.TimeInterval = cfg.TimeInterval
+				_repo.TimeOffset = cfg.TimeOffset
 
 				_repo.FromRepo = cfg.FromRepo
 				_repo.FromBranch = cfg.FromBranch
