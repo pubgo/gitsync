@@ -239,13 +239,16 @@ func (t *repo) handleCommit() (err error) {
 		//fmt.Println(c.Committer.When.String())
 		//&& c.Committer.When.After(_now)
 		if c.Committer.When.Format("2006-01-02") == t.curDate {
-			fmt.Println("today commit: ", c.Committer.When.String(), c.Hash.String())
 			t.commits = append(t.commits, c)
 		}
 
 		// 获取指定当天commit之前的一个commit
 		if c.Committer.When.Before(_now) {
-			t.lastCommit = c
+			// 如果github仓库就一次commit，那么，就是第一次提交，把所有代码提交了
+			if t.isFirstTime() {
+				xerror.PanicM(t._commitAndPush(c), "git commit error")
+				log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
+			}
 			return xerror.ErrDone
 		}
 
@@ -258,18 +261,13 @@ func (t *repo) handleCommit() (err error) {
 	})
 
 	for i, c := range t.commits {
-		log.Info().
-			Str("now", _now.Format(time.RFC3339)).
-			Int("num", i).
-			Str("commit_time", c.Committer.When.String()).
-			Str("hash", c.Hash.String()).
-			Str("repo", t.getRepoName(t.FromRepo)).
-			Msg("repo commit msg")
+		fmt.Println(i, "today commit: ", c.Committer.When.String(), c.Hash.String())
 	}
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
 
 	xerror.PanicM(t.getLastCommitFromNewRepo(), "get lastCommit error")
+
 	return
 }
 
@@ -290,30 +288,26 @@ func (t *repo) getLastCommitFromNewRepo() (err error) {
 	return
 }
 
-func (t *repo) commitAndPush() (err error) {
+func (t *repo) isFirstTime() bool {
+	xerror.Panic(t.pullTo())
+
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
+	tFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
+
+	cIter := xerror.PanicErr(tFrom.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
+	defer cIter.Close()
+
+	i := 0
+	xerror.Panic(cIter.ForEach(func(_ *object.Commit) error {
+		i++
+		return nil
+	}))
+
+	return i == 1
+}
+
+func (t *repo) _commitAndPush(c *object.Commit) (err error) {
 	defer xerror.RespErr(&err)
-
-	var _curCommit *object.Commit = nil
-	_now := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24)
-	// 距离commit在两分钟之内，就提交了
-	_timeInterval := math.Abs((time.Duration(t.TimeInterval) * time.Minute).Seconds())
-	for _, c := range t.commits {
-		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < _timeInterval {
-			//fmt.Println("ok", c.Committer.When.String(), t.lastCommit.Committer.When.String())
-			if c.Committer.When.Sub(t.lastCommit.Committer.When).Seconds() <= 0 {
-				continue
-			}
-
-			_curCommit = c
-			break
-		}
-	}
-
-	// 定时检查更新
-	if _curCommit == nil {
-		log.Info().Msg("没有更新")
-		return
-	}
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
 	rFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
@@ -321,7 +315,7 @@ func (t *repo) commitAndPush() (err error) {
 	xerror.PanicM(t.pullFrom(), "git pull failed")
 
 	xerror.PanicM(wFrom.Reset(&git.ResetOptions{
-		Commit: _curCommit.Hash,
+		Commit: c.Hash,
 		Mode:   git.HardReset,
 	}), "git reset failed")
 
@@ -345,11 +339,11 @@ func (t *repo) commitAndPush() (err error) {
 	}
 
 	// 提交commit
-	xerror.PanicErr(wTo.Commit(_curCommit.Message, &git.CommitOptions{
+	xerror.PanicErr(wTo.Commit(c.Message, &git.CommitOptions{
 		All: true,
 		Author: &object.Signature{
-			Name:  _curCommit.Author.Name,
-			Email: _curCommit.Author.Email,
+			Name:  c.Author.Name,
+			Email: c.Author.Email,
 			When:  time.Now(),
 		},
 	}))
@@ -366,11 +360,40 @@ func (t *repo) commitAndPush() (err error) {
 	}
 
 	// 最后把lastCommit提前一位
-	t.lastCommit = _curCommit
+	t.lastCommit = c
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
 
 	xerror.PanicM(t.pullFrom(), "git pull failed")
+	return
+}
+
+func (t *repo) commitAndPush() (err error) {
+	defer xerror.RespErr(&err)
+
+	var _curCommit *object.Commit = nil
+	_now := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24)
+	// 距离commit在TimeInterval分钟之内，就提交了
+	_timeInterval := math.Abs((time.Duration(t.TimeInterval) * time.Minute).Seconds())
+	for _, c := range t.commits {
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < _timeInterval {
+			//fmt.Println("ok", c.Committer.When.String(), t.lastCommit.Committer.When.String())
+			if c.Committer.When.Sub(t.lastCommit.Committer.When).Seconds() <= 0 {
+				continue
+			}
+
+			_curCommit = c
+			break
+		}
+	}
+
+	// 定时检查更新
+	if _curCommit == nil {
+		log.Info().Msg("没有更新")
+		return
+	}
+
+	xerror.PanicM(t._commitAndPush(_curCommit), "git commit error")
 	return
 }
 
