@@ -2,18 +2,21 @@ package cmds
 
 import (
 	"fmt"
+	"github.com/pubgo/g/gotry"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
-	"github.com/pubgo/g/gotry"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
 	"gopkg.in/src-d/go-git.v4/plumbing/object"
+	"gopkg.in/src-d/go-git.v4/plumbing/transport"
 	"gopkg.in/src-d/go-git.v4/plumbing/transport/http"
+	"io/ioutil"
 	"math"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,6 +31,7 @@ func newRepo() repo {
 type repo struct {
 	RepoDir      string
 	TimeInterval int `toml:"time_interval"`
+	TimeOffset   int `toml:"time_offset"`
 
 	FromUserPass []string `toml:"from_user_pass"`
 	FromRepo     string   `toml:"from_repo"`
@@ -60,7 +64,8 @@ func (t *repo) getRepoName(repo string) string {
 }
 
 // 添加 git remote origin
-func (t *repo) remoteAdd() (err error) {
+// deprecated
+func (t *repo) _remoteAdd() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
@@ -91,69 +96,73 @@ func (t *repo) remoteAdd() (err error) {
 // 重启或者时间增加一天，时期都会改变
 func (t *repo) isDateChanged() bool {
 	// 获取指定天数之前的那天的日期
-	_curDate := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24).Format("2006-01-02")
+	_curDate := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24).Format("2006-01-02")
 	if _curDate != t.curDate {
 		// 日期改变初始化
 		t.curDate = _curDate
 		t.commits = t.commits[:0]
 		return true
 	}
-
 	return false
 }
 
 // 检查仓库是否存在，不存在
-func (t *repo) pull() (err error) {
+func (t *repo) pullFrom() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	if err := w.Pull(&git.PullOptions{
-		Auth: &http.BasicAuth{
-			Username: t.FromUserPass[0],
-			Password: t.FromUserPass[1],
-		},
-		Force:         true,
-		SingleBranch:  true,
-		RemoteName:    "origin",
-		ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
-		Progress:      os.Stdout,
-	}); err != nil &&
-		err != git.NoErrAlreadyUpToDate &&
-		!strings.Contains(err.Error(), "non-fast-forward update") &&
-		!strings.Contains(err.Error(), "worktree contains unstaged") {
-		xerror.PanicM(err, "git pull failed")
-	}
+	gotry.RetryAt(time.Second*20, func(i int) {
+		if err := w.Pull(&git.PullOptions{
+			Auth: &http.BasicAuth{
+				Username: t.FromUserPass[0],
+				Password: t.FromUserPass[1],
+			},
+			Force:         true,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
+			Progress:      os.Stdout,
+		}); err != nil &&
+			err != git.NoErrAlreadyUpToDate &&
+			!strings.Contains(err.Error(), "non-fast-forward update") &&
+			!strings.Contains(err.Error(), "worktree contains unstaged") {
+			xerror.PanicM(err, "git pull failed")
+		}
+	})
 
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("pull ok")
+	log.Info().Str("repo_from", t.getRepoName(t.FromRepo)).Msg("pull ok")
 	return
 }
 
-func (t *repo) pullDstRepo() (err error) {
+func (t *repo) pullTo() (err error) {
 	defer xerror.RespErr(&err)
 
-	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.ToRepo))
+	r := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	if err := w.Pull(&git.PullOptions{
-		Auth: &http.BasicAuth{
-			Username: t.ToUserPass[0],
-			Password: t.ToUserPass[1],
-		},
-		Force:         true,
-		SingleBranch:  true,
-		RemoteName:    t.getRepoDomain(t.ToRepo),
-		ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
-		Progress:      os.Stdout,
-	}); err != nil &&
-		err != git.NoErrAlreadyUpToDate &&
-		!strings.Contains(err.Error(), "non-fast-forward update") &&
-		!strings.Contains(err.Error(), "worktree contains unstaged") {
-		xerror.PanicM(err, "git pull failed")
-	}
+	gotry.RetryAt(time.Second*20, func(i int) {
+		if err := w.Pull(&git.PullOptions{
+			Auth: &http.BasicAuth{
+				Username: t.ToUserPass[0],
+				Password: t.ToUserPass[1],
+			},
+			Force:         true,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
+			Progress:      os.Stdout,
+		}); err != nil &&
+			err != git.NoErrAlreadyUpToDate &&
+			!strings.Contains(err.Error(), "non-fast-forward update") &&
+			!strings.Contains(err.Error(), "worktree contains unstaged") {
+			fmt.Println(err)
+			xerror.PanicM(err, "git pull failed")
+		}
+	})
 
-	log.Info().Str("repo", t.getRepoName(t.ToRepo)).Msg("pull ok")
+	log.Info().Str("repo_to", t.getRepoName(t.ToRepo)).Msg("pull ok")
 	return
 }
 
@@ -162,12 +171,14 @@ func (t *repo) clone() (err error) {
 	defer xerror.RespErr(&err)
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	if !fileutil.CheckNotExist(_repoDir) {
-		return
-	}
+	gotry.RetryAt(time.Minute, func(i int) {
+		repoDirFrom := _repoDir + "_from"
 
-	xerror.Panic(gotry.Retry(3, func() {
-		xerror.PanicErr(git.PlainClone(_repoDir, false, &git.CloneOptions{
+		if !fileutil.CheckNotExist(repoDirFrom) {
+			return
+		}
+
+		xerror.PanicErr(git.PlainClone(repoDirFrom, false, &git.CloneOptions{
 			Auth: &http.BasicAuth{
 				Username: t.FromUserPass[0],
 				Password: t.FromUserPass[1],
@@ -178,15 +189,37 @@ func (t *repo) clone() (err error) {
 			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 			Progress:      os.Stdout,
 		}))
-	}))
+		log.Info().Msgf("clone %s ok", repoDirFrom)
+		xerror.Panic(t.pullFrom())
+	})
 
+	gotry.RetryAt(time.Minute, func(i int) {
+		repoDirTo := _repoDir + "_to"
 
-	xerror.Panic(t.pull())
+		if !fileutil.CheckNotExist(repoDirTo) {
+			return
+		}
 
-	// 添加远程url失败
-	xerror.PanicM(t.remoteAdd(), "git remote origin add failed")
+		if _, err := git.PlainClone(repoDirTo, false, &git.CloneOptions{
+			Auth: &http.BasicAuth{
+				Username: t.ToUserPass[0],
+				Password: t.ToUserPass[1],
+			},
+			URL:           t.ToRepo,
+			SingleBranch:  true,
+			RemoteName:    "origin",
+			ReferenceName: plumbing.NewBranchReferenceName(t.ToBranch),
+			Progress:      os.Stdout,
+		}); err != nil && err != transport.ErrEmptyRemoteRepository {
+			fmt.Println(err.Error())
+			xerror.Panic(err)
+		}
 
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("clone ok")
+		log.Info().Msgf("clone %s ok", repoDirTo)
+
+		xerror.Panic(t.pullTo())
+	})
+
 	return
 }
 
@@ -194,26 +227,30 @@ func (t *repo) clone() (err error) {
 func (t *repo) handleCommit() (err error) {
 	defer xerror.RespErr(&err)
 
-	xerror.PanicM(t.pull(), "handle git pull failed")
+	xerror.Panic(t.pullFrom())
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
+	rFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
 
-	cIter := xerror.PanicErr(r.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
+	cIter := xerror.PanicErr(rFrom.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
 	defer cIter.Close()
 
-	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
+	_now := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24)
 	xerror.PanicM(cIter.ForEach(func(c *object.Commit) error {
-		fmt.Println(c.Committer.When.String())
-		//&& c.Committer.When.After(_now)
-		if c.Committer.When.Format("2006-01-02") == t.curDate  {
-			t.commits = append(t.commits, c)
-		}
-
 		// 获取指定当天commit之前的一个commit
 		if c.Committer.When.Before(_now) {
-			t.lastCommit = c
+			// 如果github仓库就一次commit，那么，就是第一次提交，把所有代码提交了
+			if t.isFirstTime() {
+				xerror.PanicM(t._commitAndPush(true, c), "git commit error")
+				log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
+			}
 			return xerror.ErrDone
+		}
+
+		//fmt.Println(c.Committer.When.String())
+		//&& c.Committer.When.After(_now)
+		if c.Committer.When.Format("2006-01-02") == t.curDate {
+			t.commits = append(t.commits, c)
 		}
 
 		return nil
@@ -225,75 +262,111 @@ func (t *repo) handleCommit() (err error) {
 	})
 
 	for i, c := range t.commits {
-		fmt.Println(i, c.Committer.When.String(), c.Hash.String(), _now.String())
+		fmt.Println(i, "today commit: ", c.Committer.When.String(), c.Hash.String())
 	}
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
+
+	xerror.PanicM(t.getLastCommitFromNewRepo(), "get lastCommit error")
+
 	return
 }
 
-func (t *repo) commitAndPush() (err error) {
+func (t *repo) getLastCommitFromNewRepo() (err error) {
 	defer xerror.RespErr(&err)
 
-	var _curCommit *object.Commit = nil
-	_now := time.Now().Add(-time.Duration(t.TimeInterval) * time.Hour * 24)
-	for _, c := range t.commits {
-		fmt.Println(c.Committer.When.String())
-		// 距离commit在两分钟之内，就提交了
-		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < 15*time.Minute.Seconds() {
-			//fmt.Println(c.Committer.When.String(), _now.String(), t.lastCommit.Committer.String())
-			_curCommit = c
-			break
-		}
-	}
-
-	// 定时检查更新
-	if _curCommit == nil || _curCommit == t.lastCommit {
-		//fmt.Println("2006-01-02", "没有更新")
-		return
-	}
+	xerror.Panic(t.pullTo())
 
 	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
-	r := xerror.PanicErr(git.PlainOpen(_repoDir)).(*git.Repository)
-	w := xerror.PanicErr(r.Worktree()).(*git.Worktree)
-	//xerror.PanicM(t.pull(), "git pull failed")
+	tFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
 
-	xerror.PanicM(w.Reset(&git.ResetOptions{
-		Commit: _curCommit.Hash,
+	cIter := xerror.PanicErr(tFrom.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
+	defer cIter.Close()
+
+	t.lastCommit = xerror.PanicErr(cIter.Next()).(*object.Commit)
+	t.lastCommit.Committer.When = t.lastCommit.Committer.When.Add(time.Duration(t.TimeOffset) * time.Hour * 24)
+	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("lastCommit ok")
+	return
+}
+
+// isFirstTime
+//检查是否是第一次把代码提交到github仓库, 如果是, 就立刻同步
+func (t *repo) isFirstTime() bool {
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
+	tFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
+
+	cIter := xerror.PanicErr(tFrom.Log(&git.LogOptions{Order: git.LogOrderCommitterTime})).(object.CommitIter)
+	defer cIter.Close()
+
+	i := 0
+	xerror.Panic(cIter.ForEach(func(_ *object.Commit) error {
+		i++
+		return nil
+	}))
+
+	return i == 1
+}
+
+// _commitAndPush
+// 把传入的commit 当做最新的commit，然后提交到github
+func (t *repo) _commitAndPush(isFirst bool, c *object.Commit) (err error) {
+	defer xerror.RespErr(&err)
+
+	_repoDir := filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))
+	rFrom := xerror.PanicErr(git.PlainOpen(_repoDir + "_from")).(*git.Repository)
+	wFrom := xerror.PanicErr(rFrom.Worktree()).(*git.Worktree)
+	xerror.PanicM(t.pullFrom(), "git pull failed")
+
+	xerror.PanicM(wFrom.Reset(&git.ResetOptions{
+		Commit: c.Hash,
 		Mode:   git.HardReset,
 	}), "git reset failed")
 
-	xerror.PanicM(w.Reset(&git.ResetOptions{
-		Commit: t.lastCommit.Hash,
-		Mode:   git.SoftReset,
-	}), "git reset failed")
+	for _, f := range xerror.PanicErr(ioutil.ReadDir(_repoDir + "_from")).([]os.FileInfo) {
+		if f.Name() == ".git" || f.Name() == ".DS_Store" {
+			continue
+		}
 
-	//xerror.PanicErr(w.Add(filepath.Join(t.RepoDir, t.getRepoName(t.FromRepo))))
+		_cmd := exec.Command("cp", "-Rf", fmt.Sprintf(`%s%s`, _repoDir, "_from/"+f.Name()), _repoDir+"_to/"+f.Name())
+		_dd, err := _cmd.CombinedOutput()
+		xerror.PanicM(err, "copy from repo %s", _dd)
+	}
 
+	rTo := xerror.PanicErr(git.PlainOpen(_repoDir + "_to")).(*git.Repository)
+	wTo := xerror.PanicErr(rTo.Worktree()).(*git.Worktree)
+	fmt.Println(_repoDir + "_to")
+
+	_status := xerror.PanicErr(wTo.Status()).(git.Status)
+	for k := range _status {
+		xerror.PanicErr(wTo.Add(k))
+	}
+
+	__t := time.Duration(t.TimeOffset) * time.Hour * 24
+	if __t < 0 {
+		__t = -__t
+	}
+
+	if isFirst {
+		c.Committer.When = time.Now()
+	} else {
+		c.Committer.When = c.Committer.When.Add(__t)
+	}
 	// 提交commit
-	xerror.PanicErr(w.Commit(_curCommit.Message, &git.CommitOptions{
+	xerror.PanicErr(wTo.Commit(c.Message, &git.CommitOptions{
 		All: true,
+		Committer: &object.Signature{
+			Name:  c.Committer.Name,
+			Email: c.Committer.Email,
+			When:  c.Committer.When,
+		},
 		Author: &object.Signature{
-			Name:  _curCommit.Author.Name,
-			Email: _curCommit.Author.Email,
-			When:  time.Now(),
+			Name:  c.Author.Name,
+			Email: c.Author.Email,
+			When:  c.Committer.When,
 		},
 	}))
 
-	// 拉取github远程,合并到本地
-	xerror.PanicM(t.pullDstRepo(), "github pull 失败")
-
-	_lastCommitReset := func() {
-		// 把提交的commit删除，不然需要合并新提交的commit
-		xerror.PanicM(w.Reset(&git.ResetOptions{
-			Commit: t.lastCommit.Hash,
-			Mode:   git.HardReset,
-		}), "git last commit reset failed")
-		xerror.Panic(t.pull())
-	}
-
-	if err := r.Push(&git.PushOptions{
-		RemoteName: t.getRepoDomain(t.ToRepo),
+	if err := rTo.Push(&git.PushOptions{
 		Auth: &http.BasicAuth{
 			Username: t.ToUserPass[0],
 			Password: t.ToUserPass[1],
@@ -301,20 +374,44 @@ func (t *repo) commitAndPush() (err error) {
 		Progress: os.Stdout,
 		RefSpecs: []config.RefSpec{"+" + config.DefaultPushRefSpec},
 	}); err != nil && err != git.NoErrAlreadyUpToDate && !strings.Contains(err.Error(), "non-fast-forward update") {
-		if err == git.ErrRemoteNotFound {
-			xerror.Panic(t.remoteAdd())
-		}
-
-		_lastCommitReset()
 		xerror.PanicM(err, "git 仓库 %s push failed", t.ToRepo)
 	}
 
-	_lastCommitReset()
-
 	// 最后把lastCommit提前一位
-	t.lastCommit = _curCommit
+	t.lastCommit = c
 
 	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
+
+	xerror.PanicM(t.pullFrom(), "git pull failed")
+	return
+}
+
+func (t *repo) commitAndPush() (err error) {
+	defer xerror.RespErr(&err)
+
+	var _curCommit *object.Commit = nil
+	_now := time.Now().Add(time.Duration(t.TimeOffset) * time.Hour * 24)
+	// 距离commit在TimeInterval分钟之内，就提交了
+	_timeInterval := math.Abs((time.Duration(t.TimeInterval) * time.Minute).Seconds())
+	for _, c := range t.commits {
+		if math.Abs(c.Committer.When.Sub(_now).Seconds()) < _timeInterval {
+			//fmt.Println("ok", c.Committer.When.String(), t.lastCommit.Committer.When.String())
+			if c.Committer.When.Sub(t.lastCommit.Committer.When).Seconds() <= 0 {
+				continue
+			}
+
+			_curCommit = c
+			break
+		}
+	}
+
+	// 定时检查更新
+	if _curCommit == nil {
+		log.Info().Msg("没有更新")
+		return
+	}
+
+	xerror.PanicM(t._commitAndPush(false, _curCommit), "git commit error")
 	return
 }
 
@@ -325,7 +422,6 @@ func (t *repo) run() {
 	})
 
 	defer t.mutex.Unlock()
-
 	t.mutex.Lock()
 
 	log.Info().Msgf("startup %s", t.getRepoName(t.FromRepo))

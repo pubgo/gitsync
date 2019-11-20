@@ -13,7 +13,9 @@ import (
 const Service = "gitsync"
 
 // Execute exec
-var Execute = xcmds.Init(func(cmd *cobra.Command) {
+var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
+	defer xerror.Assert()
+
 	cmd.Use = Service
 	cmd.Version = version.Version
 

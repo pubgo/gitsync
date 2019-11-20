@@ -1,15 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"github.com/pubgo/g/xerror"
 	"github.com/pubgo/gitsync/cmds"
-	"os"
+	"runtime"
 )
 
 func main() {
-	defer xerror.Resp(func(err *xerror.Err) {
-		fmt.Println(err.P())
-	})
-	xerror.Panic(cmds.Execute("GS", os.ExpandEnv("$PWD")))
+	// git tag --sort=committerdate | tee | tail -n 1
+	// git rev-parse --short=8 HEAD
+	// git log -1 | tee | tail -n 1
+	runtime.Version()
+	xerror.Exit(cmds.Execute("$PWD"))("command error")
 }
