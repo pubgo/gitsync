@@ -13,6 +13,15 @@
 6. git commit -m "C1.msg"
 6. git push O1 O1/branch
 
+
+
+1. 从开始获取所有的commit历史
+2. 从github拉取最新的
+3. 删除代码code
+4. 从公司的code clone代码，然后覆盖现有的代码code
+5. 从历史记录获取一个commit，然后
+
+
 ## 启动
 
 ## 创建远程仓库
