@@ -22,9 +22,7 @@ var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
 
 	// 添加加密命令
 	ss_cmd.Init()
-}, func() (err error) {
-	defer xerror.RespErr(&err)
-
+}, func() error {
 	_l := logs.Default()
 	_l.Version = version.Version
 	_l.Service = Service
@@ -34,6 +32,5 @@ var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
 	if pkg.IsDebug() {
 		logs.P("config", _cfg)
 	}
-
-	return
+	return nil
 })
