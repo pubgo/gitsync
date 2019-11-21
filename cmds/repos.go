@@ -5,7 +5,6 @@ import (
 	"github.com/pubgo/g/gotry"
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xerror"
-	"github.com/rs/zerolog/log"
 	"gopkg.in/src-d/go-git.v4"
 	"gopkg.in/src-d/go-git.v4/config"
 	"gopkg.in/src-d/go-git.v4/plumbing"
@@ -87,7 +86,7 @@ func (t *repo) _remoteAdd() (err error) {
 
 	xerror.PanicT(!_ok, "remote(%s,%s)添加失败", _name, t.ToRepo)
 
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("remoteAdd ok")
+	logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("remoteAdd ok")
 	return
 
 }
@@ -132,7 +131,7 @@ func (t *repo) pullFrom() (err error) {
 		}
 	})
 
-	log.Info().Str("repo_from", t.getRepoName(t.FromRepo)).Msg("pull ok")
+	logger.Info().Str("repo_from", t.getRepoName(t.FromRepo)).Msg("pull ok")
 	return
 }
 
@@ -162,7 +161,7 @@ func (t *repo) pullTo() (err error) {
 		}
 	})
 
-	log.Info().Str("repo_to", t.getRepoName(t.ToRepo)).Msg("pull ok")
+	logger.Info().Str("repo_to", t.getRepoName(t.ToRepo)).Msg("pull ok")
 	return
 }
 
@@ -189,7 +188,7 @@ func (t *repo) clone() (err error) {
 			ReferenceName: plumbing.NewBranchReferenceName(t.FromBranch),
 			Progress:      os.Stdout,
 		}))
-		log.Info().Msgf("clone %s ok", repoDirFrom)
+		logger.Info().Msgf("clone %s ok", repoDirFrom)
 		xerror.Panic(t.pullFrom())
 	})
 
@@ -215,7 +214,7 @@ func (t *repo) clone() (err error) {
 			xerror.Panic(err)
 		}
 
-		log.Info().Msgf("clone %s ok", repoDirTo)
+		logger.Info().Msgf("clone %s ok", repoDirTo)
 
 		xerror.Panic(t.pullTo())
 	})
@@ -242,7 +241,7 @@ func (t *repo) handleCommit() (err error) {
 			// 如果github仓库就一次commit，那么，就是第一次提交，把所有代码提交了
 			if t.isFirstTime() {
 				xerror.PanicM(t._commitAndPush(true, c), "git commit error")
-				log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
+				logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
 			}
 			return xerror.ErrDone
 		}
@@ -265,7 +264,7 @@ func (t *repo) handleCommit() (err error) {
 		fmt.Println(i, "today commit: ", c.Committer.When.String(), c.Hash.String())
 	}
 
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
+	logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("handleCommit ok")
 
 	xerror.PanicM(t.getLastCommitFromNewRepo(), "get lastCommit error")
 
@@ -285,7 +284,7 @@ func (t *repo) getLastCommitFromNewRepo() (err error) {
 
 	t.lastCommit = xerror.PanicErr(cIter.Next()).(*object.Commit)
 	t.lastCommit.Committer.When = t.lastCommit.Committer.When.Add(time.Duration(t.TimeOffset) * time.Hour * 24)
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("lastCommit ok")
+	logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("lastCommit ok")
 	return
 }
 
@@ -380,7 +379,7 @@ func (t *repo) _commitAndPush(isFirst bool, c *object.Commit) (err error) {
 	// 最后把lastCommit提前一位
 	t.lastCommit = c
 
-	log.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
+	logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("commitAndPush ok")
 
 	xerror.PanicM(t.pullFrom(), "git pull failed")
 	return
@@ -407,7 +406,7 @@ func (t *repo) commitAndPush() (err error) {
 
 	// 定时检查更新
 	if _curCommit == nil {
-		log.Info().Msg("没有更新")
+		logger.Info().Msg("没有更新")
 		return
 	}
 
@@ -424,7 +423,7 @@ func (t *repo) run() {
 	defer t.mutex.Unlock()
 	t.mutex.Lock()
 
-	log.Info().Msgf("startup %s", t.getRepoName(t.FromRepo))
+	logger.Info().Msgf("startup %s", t.getRepoName(t.FromRepo))
 
 	xerror.Panic(t.clone())
 
@@ -434,6 +433,6 @@ func (t *repo) run() {
 	}
 
 	xerror.Panic(t.commitAndPush())
-	log.Info().Msgf("over %s", t.getRepoName(t.FromRepo))
+	logger.Info().Msgf("over %s", t.getRepoName(t.FromRepo))
 	fmt.Print("\n\n")
 }
