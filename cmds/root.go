@@ -4,7 +4,7 @@ import (
 	"github.com/pubgo/g/logs"
 	"github.com/pubgo/g/pkg"
 	"github.com/pubgo/g/xcmds"
-	"github.com/pubgo/g/xcmds/ss_cmd"
+	"github.com/pubgo/g/xcmds/xcmd_ss"
 	"github.com/pubgo/g/xerror"
 	"github.com/pubgo/gitsync/config"
 	"github.com/pubgo/gitsync/version"
@@ -21,7 +21,7 @@ var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
 	cmd.Version = version.Version
 
 	// 添加加密命令
-	ss_cmd.Init()
+	xcmd_ss.Init()
 }, func() error {
 	_l := logs.Default()
 	_l.Version = version.Version
