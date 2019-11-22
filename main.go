@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	cmds.Execute("$PWD")
+	cmds.Execute()
 }
