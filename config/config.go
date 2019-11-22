@@ -13,18 +13,18 @@ type _Config struct {
 	Ext ext `toml:"ext"`
 }
 
+var Default = _init
+var Init = _init
+
 var _cfg *_Config
 var _once sync.Once
 
-// Default global config instance
-func Default() *_Config {
+// _init
+// global config instance
+func _init() *_Config {
 	_once.Do(func() {
 		_cfg = &_Config{Cfg: xconfig_instance.Default()}
 		xerror.Panic(xconfig_instance.ExtDecode(&_cfg.Ext))
 	})
 	return _cfg
-}
-
-func Init() {
-	Default()
 }

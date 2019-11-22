@@ -2,7 +2,6 @@ package cmds
 
 import (
 	"github.com/pubgo/g/logs"
-	"github.com/pubgo/g/pkg"
 	"github.com/pubgo/g/xcmds"
 	"github.com/pubgo/g/xcmds/xcmd_ss"
 	"github.com/pubgo/g/xerror"
@@ -28,9 +27,6 @@ var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
 	_l.Service = Service
 	_l.Init()
 
-	_cfg := config.Default()
-	if pkg.IsDebug() {
-		logs.P("config", _cfg)
-	}
+	config.Init()
 	return nil
 })
