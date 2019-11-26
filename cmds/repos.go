@@ -303,7 +303,7 @@ func (t *repo) isFirstTime() bool {
 		return nil
 	}))
 
-	return i == 1
+	return i == 2
 }
 
 // _commitAndPush
