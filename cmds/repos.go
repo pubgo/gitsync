@@ -322,7 +322,8 @@ func (t *repo) _commitAndPush(isFirst bool, c *object.Commit) (err error) {
 	}), "git reset failed")
 
 	for _, f := range xerror.PanicErr(ioutil.ReadDir(_repoDir + "_from")).([]os.FileInfo) {
-		if f.Name() == ".git" || f.Name() == ".DS_Store" {
+		name := f.Name()
+		if name == ".git" || name == ".DS_Store" || name == ".gitignore" {
 			continue
 		}
 
