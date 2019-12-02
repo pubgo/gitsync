@@ -1,30 +1,20 @@
 package config
 
 import (
-	"github.com/pubgo/g/pdd/config"
-	"github.com/pubgo/g/xconfig/xconfig_instance"
+	"github.com/pubgo/g/xconfig"
 	"github.com/pubgo/g/xerror"
-	"sync"
+	"github.com/pubgo/g/xinit"
 )
 
-// Config app
-type _Config struct {
-	Cfg *config.Config
+// Config
+type Config struct {
+	Cfg *xconfig.Config
 	Ext ext `toml:"ext"`
 }
 
-var Default = _init
-var Init = _init
-
-var _cfg *_Config
-var _once sync.Once
-
-// _init
-// global config instance
-func _init() *_Config {
-	_once.Do(func() {
-		_cfg = &_Config{Cfg: xconfig_instance.Default()}
-		xerror.Panic(xconfig_instance.ExtDecode(&_cfg.Ext))
+func init() {
+	xinit.InitProvide(func(config *xconfig.Config) (*Config, error) {
+		_cfg := &Config{Cfg: config}
+		return _cfg, xerror.Wrap(xconfig.ExtDecode(&_cfg.Ext), "init config error")
 	})
-	return _cfg
 }

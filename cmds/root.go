@@ -1,19 +1,16 @@
 package cmds
 
 import (
-	"github.com/pubgo/g/logs"
 	"github.com/pubgo/g/xcmds"
 	"github.com/pubgo/g/xcmds/xcmd_ss"
 	"github.com/pubgo/g/xerror"
-	"github.com/pubgo/gitsync/config"
 	"github.com/pubgo/gitsync/version"
-	"github.com/spf13/cobra"
 )
 
 const Service = "gitsync"
 
 // Execute exec
-var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
+var Execute = xcmds.Init("GS", func(cmd *xcmds.Command) {
 	defer xerror.Assert()
 
 	cmd.Use = Service
@@ -21,12 +18,4 @@ var Execute = xcmds.Init("GS", func(cmd *cobra.Command) {
 
 	// 添加加密命令
 	xcmd_ss.Init()
-}, func() error {
-	_l := logs.Default()
-	_l.Version = version.Version
-	_l.Service = Service
-	_l.Init()
-
-	config.Init()
-	return nil
 })
