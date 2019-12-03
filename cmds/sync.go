@@ -8,7 +8,6 @@ import (
 	"github.com/pubgo/g/xerror"
 	"github.com/pubgo/g/xinit"
 	"github.com/pubgo/gitsync/config"
-	"github.com/spf13/cobra"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,11 +16,11 @@ import (
 const repos = "repos"
 
 func init() {
-	xcmds.AddCommand(&cobra.Command{
+	xcmds.AddCommand(&xcmds.Command{
 		Use:     "sync",
 		Aliases: []string{"s"},
 		Short:   "sync startup",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
+		RunE: func(cmd *xcmds.Command, args []string) (err error) {
 			defer xerror.RespErr(&err)
 
 			var gitSyncCfg *config.Config

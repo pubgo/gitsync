@@ -13,8 +13,10 @@ type Config struct {
 }
 
 func init() {
-	xinit.InitProvide(func(config *xconfig.Config) (*Config, error) {
+	xinit.InitProvide(func(config *xconfig.Config) *Config {
+		defer xerror.Assert()
 		_cfg := &Config{Cfg: config}
-		return _cfg, xerror.Wrap(xconfig.ExtDecode(&_cfg.Ext), "init config error")
+		xerror.PanicM(xconfig.ExtDecode(&_cfg.Ext), "init config error")
+		return _cfg
 	})
 }
