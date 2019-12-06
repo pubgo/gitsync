@@ -5,8 +5,8 @@ import (
 	"github.com/pubgo/g/pkg/fileutil"
 	"github.com/pubgo/g/xcmds"
 	"github.com/pubgo/g/xconfig"
+	"github.com/pubgo/g/xdi"
 	"github.com/pubgo/g/xerror"
-	"github.com/pubgo/g/xinit"
 	"github.com/pubgo/gitsync/config"
 	"os"
 	"path/filepath"
@@ -24,7 +24,7 @@ func init() {
 			defer xerror.RespErr(&err)
 
 			var gitSyncCfg *config.Config
-			xerror.Panic(xinit.Invoke(func(_cfg *config.Config) {
+			xerror.Panic(xdi.Invoke(func(_cfg *config.Config) {
 				gitSyncCfg = _cfg
 			}))
 

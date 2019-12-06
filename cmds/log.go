@@ -1,15 +1,15 @@
 package cmds
 
 import (
-	"github.com/pubgo/g/xconfig/xconfig_log"
-	"github.com/pubgo/g/xinit"
+	"github.com/pubgo/g/logs"
+	"github.com/pubgo/g/xdi"
 	"github.com/rs/zerolog"
 )
 
-var logger zerolog.Logger
+var logger = logs.DebugLog("pkg", "gitsync")
 
 func init() {
-	xinit.InitInvoke(func(log *xconfig_log.Log) {
-		logger = log.Log("pkg", "gitsync")
+	xdi.InitInvoke(func(log zerolog.Logger) {
+		logger = log.With().Str("pkg", "gitsync").Logger()
 	})
 }
