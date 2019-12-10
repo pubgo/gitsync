@@ -243,7 +243,7 @@ func (t *repo) handleCommit() (err error) {
 				xerror.PanicM(t._commitAndPush(true, c), "git commit error")
 				logger.Info().Str("repo", t.getRepoName(t.FromRepo)).Msg("git check ok")
 			}
-			return xerror.Errs.Done
+			return xerror.ErrDone
 		}
 
 		//fmt.Println(c.Committer.When.String())
@@ -416,8 +416,8 @@ func (t *repo) commitAndPush() (err error) {
 }
 
 func (t *repo) run() {
-	defer xerror.Resp(func(err *xerror.Err) {
-		fmt.Println(err.P())
+	defer xerror.Resp(func(err xerror.IErr) {
+		err.P()
 		os.Exit(-1)
 	})
 
